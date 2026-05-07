@@ -1,0 +1,46 @@
+# 이현 블로그 이미지 에이전트 — 시드 레퍼런스 메타데이터
+# 계획서 11.2 (line 1100-1117) 스키마 기준.
+# source: "토스피드"는 시드 prompt input 용도, 외부 노출 금지 (계획서 1096줄).
+# Phase 1 시드: simple_table 4장 + chart_line 2장.
+
+simple_table:
+  - file: 0825-inner-2_(3).png
+    style: { background: white, header: gray, accent: navy }
+    use_when: "다열·다행 정책/사례 비교 (시기·정책·영향 등 카테고리별 정리, 행 병합 가능)"
+    text_density: medium
+    source: "토스피드 (시드 레퍼런스, 외부 노출 금지)"
+  - file: tmp_kor_01.png
+    style: { background: white, header: gray, accent: navy }
+    use_when: "그룹화된 다층 표 (좌측 컬럼이 그룹 라벨, 행 병합으로 카테고리 묶음, 정책 구간/유형별 정리)"
+    text_density: high
+    source: "토스피드 (시드 레퍼런스, 외부 노출 금지)"
+  - file: tmp_kor_02.png
+    style: { background: white, header: gray, accent: navy }
+    use_when: "단순 2열 매핑 표 (구분/내용, 항목/값 pair, 행 병합 없음)"
+    text_density: low
+    source: "토스피드 (시드 레퍼런스, 외부 노출 금지)"
+  - file: tmp_kor_05.png
+    style: { background: white, header: gray, accent: navy, key_column: gray }
+    use_when: "시계열 구간별 단일 지표 비교 (좌측 회색 라벨 컬럼이 시점/기간, 우측이 값)"
+    text_density: low
+    source: "토스피드 (시드 레퍼런스, 외부 노출 금지)"
+
+chart:
+  - file: infographic.jpg
+    style: { color: navy, type: line, background: light_gray, gridline: horizontal_only }
+    use_when: "단일 계열 시계열 추이 + 모든 포인트 데이터 라벨 (큰 변동/급등 강조)"
+    text_density: low
+    source: "토스피드 (시드 레퍼런스, 외부 노출 금지)"
+  - file: tmp_kor_03.png
+    style: { color: navy, type: line, background: light_gray, gridline: horizontal_only }
+    use_when: "단일 계열 시계열, peak/dip 변동 강조 (특정 시점 부각), x축 라벨 2줄(연도+부연정보)"
+    text_density: low
+    source: "토스피드 (시드 레퍼런스, 외부 노출 금지)"
+
+comparison_table:
+
+key_points_card:
+
+document_excerpt:
+
+stat_highlight:
