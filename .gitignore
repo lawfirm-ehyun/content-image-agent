@@ -1,0 +1,94 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+.Python
+build/
+dist/
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+MANIFEST
+
+# Virtual env
+.venv/
+venv/
+env/
+ENV/
+
+# uv
+.uv/
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+
+# Lint / format
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Project-specific
+output/
+tmp/
+*.log
+
+# Generated images / artifacts (작업 산출물)
+generated/
+renders/
+*.webp.tmp
+
+# Fonts (자동 다운로드, 라이선스 별도 관리)
+assets/fonts/*.otf
+assets/fonts/*.ttf
+assets/fonts/*.woff
+assets/fonts/*.woff2
+!assets/fonts/.gitkeep
+!assets/fonts/LICENSE
+
+# Playwright
+playwright-report/
+test-results/
+.playwright/
+
+# Node (혹시 있을 경우)
+node_modules/
+
+# OS
+.DS_Store
+ehthumbs.db
+Thumbs.db
