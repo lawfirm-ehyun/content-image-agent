@@ -71,6 +71,12 @@ tmp/
 generated/
 renders/
 *.webp.tmp
+templates/_review/
+templates/_smoke/
+templates/_render_*.html
+templates/_preview_*.html
+templates/_preview_*.png
+scripts/_diag_*.py
 
 # Fonts (자동 다운로드, 라이선스 별도 관리)
 assets/fonts/*.otf
