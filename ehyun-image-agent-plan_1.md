@@ -1,4 +1,4 @@
-# 이현 블로그 이미지 에이전트 — 빌드 계획서 (v1.1)
+# 이현 블로그 이미지 에이전트 — 빌드 계획서 (v1.2)
 
 > 법무법인 이현의 블로그 + 웹 콘텐츠용 이미지를 자율 생성·배치하는 에이전트.
 > Notion 워크플로 안에서 동작하며, OpenMontage의 agent-first / pipeline-driven 패턴을 차용한다.
@@ -11,12 +11,13 @@
 
 이 계획서를 컨텍스트로 받았다면:
 
-1. 이 문서 전체를 먼저 읽어라
+1. 이 문서 전체를 먼저 읽어라 (특히 v1.2 추가분: §4 카드 사이즈 정책, §19 운영 가드, §20 Phase 2 진입 체크리스트)
 2. 섹션 14의 **사용자 사전 작업 체크리스트**를 사용자에게 확인 요청
-3. 모든 사전 작업 완료 확인 후 → 섹션 12의 **Phase 0**부터 시작
+3. 모든 사전 작업 완료 확인 후 → 섹션 12의 **Phase 0**부터 시작 (Phase 0/1은 이미 진행 중일 수 있음 — `PROJECT_CONTEXT §6 Phase별 산출물 인덱스` 확인)
 4. 각 Phase 완료 시 사용자 검증 요청
-5. 절대 Phase 점프 금지. **Phase 1은 카드 2개만 (simple_table, chart_line)**. 더 만들지 마라
+5. 절대 Phase 점프 금지. **Phase 1은 카드 2개만 (simple_table, chart sub_type=line)**. 더 만들지 마라
 6. 산출물(skill, template, tool)은 매 Phase마다 README 인덱스에 추가
+7. **v1.2부터: drift 발견 시 본 계획서를 먼저 갱신**한 뒤 코드 동기화. `CLAUDE.md`는 압축 룰, 본 계획서는 사실 정의.
 
 **핵심 원칙 (절대):**
 - **Template-first** — AI 카드는 P1 이후. P0은 코드 템플릿만
@@ -25,13 +26,15 @@
 - **변호사법 §23 컴플라이언스** — 모든 이미지 텍스트는 광고규제 검사 대상
 - **검증 게이트 통과 못한 단계 → 다음 단계 X**
 - **MVP 사이즈 지키기** — Phase 1은 카드 2개만
+- **width-fixed + content-fit 카드 정책** — 노션 inline은 너비만 고정(1200px), 세로는 콘텐츠 fit. fixed-aspect는 인스타 등 채널용 modifier (Phase 2+). 일관성은 토큰·패딩·min-height 공유로 확보 (§4)
+- **운영 결정 SOT** — 본 계획서가 단일 진실원칙. 코드/스킬과 drift 발생 시 본 계획서를 먼저 갱신한 뒤 코드 동기화 (`CLAUDE.md`는 압축 룰, 본 계획서는 사실 정의)
 
 ---
 
 ## 0. 컨텍스트
 
 **무엇을 만드는가**
-Notion 콘텐츠 DB(블로그 + 웹)의 `status="이미지필요"` 페이지를 자동 처리해서, 본문 분석 → 이미지 슬롯 결정 → 이미지 생성/렌더링 → Notion에 업로드 + 적절한 위치 배치 → 결과에 따라 status 변경하는 에이전트.
+Notion 콘텐츠 DB(블로그 + 웹)의 `상태="이미지 필요"` 페이지를 자동 처리해서, 본문 분석 → 이미지 슬롯 결정 → 이미지 생성/렌더링 → Notion에 업로드 + 적절한 위치 배치 → 결과에 따라 `상태` 변경하는 에이전트.
 
 **왜 만드는가**
 1. SEO 콘텐츠 생산 속도 향상 (이미지 제작 병목 해소)
@@ -71,27 +74,29 @@ Notion 콘텐츠 DB(블로그 + 웹)의 `status="이미지필요"` 페이지를 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                  GitHub Actions Cron (1h)                    │
+│                  GitHub Actions Cron (Phase 3+)              │
 │                            │                                  │
 │                            ▼                                  │
 │                    orchestrator.py                            │
+│              (page 단위 try/except, run-level 비용 누적)      │
 │                            │                                  │
 │                            ▼                                  │
-│              Claude Agent SDK (Sonnet 4.7)                    │
-│              ↕ reads skills/, pipeline_defs/                  │
-│              ↕ calls tools/                                   │
+│            tools/llm/_common.py — Claude CLI subprocess        │
+│            (bundled claude.exe -p ... --system-prompt ...)     │
+│            ↕ skills/*.md 본문을 system_prompt에 직접 inject   │
+│            ↕ JSON 응답 파싱 → tools/* in-process 호출         │
 └────────┬───────────────────────────────────────────┬─────────┘
          │                                            │
     ┌────▼─────┐                              ┌──────▼──────┐
     │  Notion  │  fetch / upload / status     │  Template   │
-    │   API    │                              │  Renderer   │  ← 코어
+    │   API    │  (notion-client 3.0)         │  Renderer   │  ← 코어
     └──────────┘                              │ (Playwright │
                                               │  + Chart.js)│
                                               └──────┬──────┘
                                                      │
                                               ┌──────▼──────┐
                                               │  GPT-Image-2│  ← 보조
-                                              │ (P1+ 카드)   │
+                                              │ (P3+ 카드)   │
                                               └─────────────┘
 
 [figma]
@@ -100,6 +105,12 @@ Notion 콘텐츠 DB(블로그 + 웹)의 `status="이미지필요"` 페이지를 
     - 시드 레퍼런스 추출 (수동, 1회성)
     - 디자인 변경 시 코드 동기화 트리거
 ```
+
+**중요한 아키텍처 결정 (v1.2)**:
+- claude-agent-sdk 0.1.x는 우리 use case(단일 LLM 1회 호출 + 외부 in-process tools)에 비효율
+  → SDK 우회. 단 **bundled claude.exe는 그대로 사용** (인증/모델 path는 SDK와 동일).
+- skills 자동 로드 X. `tools/llm/_common.load_skill()`로 markdown 본문 읽어 system_prompt에 inject (옵션 A).
+- Phase 2/3에 hooks·subagents 필요해지면 SDK 부분 재도입 검토.
 
 ---
 
@@ -184,14 +195,19 @@ ehyun-image-agent/
 - Python 3.12 (메인)
 
 **Python 의존성**
-- `claude-agent-sdk` — Anthropic Agent SDK (※ 정확한 import/모델명은 Phase 0에서 SDK 문서 확인)
-- `openai` — P1+ (gpt-image-2)
-- `notion-client` — Notion 공식 SDK
-- `pillow` — 이미지 후처리 (WebP 변환, 사이즈 조정)
-- `pydantic` v2 — 스키마 검증
-- `pyyaml` — 파이프라인/스타일 정의 로드
-- `httpx` — 비동기 HTTP
-- `playwright` — HTML → PNG 렌더링
+- `claude-agent-sdk` 0.1.74 — **bundled `claude.exe`만 사용** (SDK 자체 API는 우회. 의존성/인증 path는 SDK가 제공).
+- `openai` — P3+ (gpt-image-2)
+- `notion-client` 3.0 — Notion 공식 SDK (file_uploads / data_sources 풀 지원, multi-source DB 자동 처리)
+- `pillow` 12 — 이미지 후처리 (WebP 변환)
+- `pydantic` 2.13 — 스키마 검증 (제한적 — 대부분 dataclass로 충분)
+- `pyyaml` 6 — 파이프라인 정의 로드
+- `httpx` 0.28 — multi-source DB의 data_source detail retrieve 등 SDK 미커버 endpoint
+- `playwright` 1.59 — HTML → PNG 렌더링 (Chromium headless)
+- `jinja2` — HTML 템플릿 (StrictUndefined로 누락 변수 즉시 raise)
+
+**LLM 호출 모델** (Phase 1 실측 후 확정):
+- `claude-sonnet-4-6` — analyze_content / review_input 양쪽 default. SDK 0.1.74로 안정 호출 검증됨.
+- Opus 4.7 (`claude-opus-4-7`)은 SDK ≥ 0.2.111 필요 — Phase 4 학습 루프 진입 시 분석 품질 부족하면 SDK 업그레이드 + Opus 재검토.
 
 **렌더링 스택**
 - Playwright Python + Chromium headless
@@ -267,18 +283,46 @@ radius:  # px
   lg: 12
   xl: 20
 
-# 카드 사이즈 프리셋 (비율별)
+# 카드 사이즈 정책 (v1.2 — width-fixed + content-fit + 타입별 min-height)
+#
+# 사상:
+#   - 노션 inline 이미지는 너비만 고정, 세로는 콘텐츠 fit (height: auto).
+#   - 일관성은 width/padding/min-height 토큰 공유로 확보.
+#   - 차트는 시각 비율 일관성 위해 차트 영역 자체를 거의 fixed (Chart.js canvas).
+#   - fixed-aspect 카드(square/vertical)는 인스타그램 등 채널용 modifier — Phase 2+.
 card_sizes:
-  default: { width: 1200, height: 675, ratio: '16:9' }   # 본문 inline
-  square:  { width: 1080, height: 1080, ratio: '1:1' }
-  vertical:{ width: 1080, height: 1350, ratio: '4:5' }
+  default:                                  # 노션 inline (본문)
+    width: 1200
+    height: auto
+    min_height: 480                         # 너무 납작한 카드 방지 (호흡감)
+  # Phase 2+ modifier (인스타용)
+  square:   { width: 1080, height: 1080, ratio: '1:1' }
+  vertical: { width: 1080, height: 1350, ratio: '4:5' }
+
+# 카드 타입별 권장 높이 범위 (시각 일관성 가이드 — Phase 1)
+card_type_sizes:
+  simple_table:
+    width: 1200
+    min_height: 480
+    max_height: 1400                        # 행 ~12개. 초과 시 슬롯을 두 개로 분할 권장
+  chart_line:
+    width: 1200
+    canvas_height: 480                      # Chart.js canvas 자체는 거의 고정
+    min_height: 700                         # 제목+canvas+출처 합산 안정
+    max_height: 800                         # 차트 영역 비율 일관성
 
 # 카드 공통 룰
 card_defaults:
-  padding: 64px
+  padding: 64px                             # spacing.3xl
   background: '#ffffff'
-  text_color: '#1e293b'    # neutral.800
+  text_color: '#1e293b'                     # neutral.800
 ```
+
+**카드 사이즈 정책 결정 노트 (v1.2)**:
+- **What**: 노션 inline용 default 카드는 `width: 1200px` 고정 + `height: auto`. 카드 타입별 `min_height` 토큰으로 호흡감 확보. fixed-aspect 비율은 Phase 2+ modifier(`.card--square`, `.card--vertical`).
+- **Why**: 1200×675 fixed는 표 행 수에 따라 잘림/빈 여백 발생, 노션 inline 표시에 부자연스러움. 그렇다고 height 완전 free는 시각 일관성 약화. 타입별 min/max로 절충.
+- **차트 예외**: Chart.js는 canvas에 명시적 height가 필요. 차트 카드는 canvas 480px + 제목 + 출처로 사실상 700~800px 범위에 수렴 — 차트 시각 비율 일관성을 유지.
+- **검증 룰**: `image_review`의 사이즈 체크는 (1200, 675) fixed가 아니라 **width == 1200 + min_height ≤ 실제 ≤ max_height** 범위 검증으로 갱신 (Phase 2 vision OCR 진입 전 코드 측 보조).
 
 `templates/_base.css`로 위 토큰을 CSS 변수로 export해서 모든 카드 템플릿에서 공유:
 
@@ -305,7 +349,20 @@ card_defaults:
 /* ... 500, 600, 700 */
 
 body { font-family: 'Pretendard', -apple-system, sans-serif; }
-.card { width: 1200px; height: 675px; padding: 64px; box-sizing: border-box; background: #fff; }
+
+/* default: 노션 inline용 — width 고정, height auto, min-height로 호흡감. */
+.card {
+  width: 1200px;
+  min-height: 480px;
+  padding: 64px;
+  box-sizing: border-box;
+  background: #fff;
+}
+/* 차트 카드는 canvas 영역이 큰 비중 — min-height을 더 높게 잡아 시각 일관성 확보. */
+.card--chart { min-height: 700px; }
+/* Phase 2+ — 인스타용 fixed-aspect modifier */
+.card--square   { width: 1080px; height: 1080px; }
+.card--vertical { width: 1080px; height: 1350px; }
 ```
 
 ---
@@ -393,7 +450,7 @@ description: 블로그/웹 페이지 한 건의 이미지를 생성·배치한�
 
 input_schema:
   page_id: string
-  page_source: enum [blog, web]
+  page_source: enum [블로그, 웹]            # v1.2: 영문 → 한글. 로그 DB select 옵션과 1:1 매칭.
   notion_page_blocks: array
 
 stages:
@@ -445,11 +502,12 @@ stages:
 
   - name: update_status
     description: |
-      처리 결과에 따라 페이지 status 결정:
-        - 모든 슬롯 성공 (또는 슬롯 0개) → "발행필요"
+      처리 결과에 따라 페이지 `상태` 결정 (운영 표기 — 띄어쓰기 그대로):
+        - 모든 슬롯 성공 (또는 슬롯 0개) → "발행 필요"
         - 일부 또는 전부 슬롯 실패 → "이미지 작업 중"
-      참고: 슬롯 0개 케이스는 사실상 거의 발생 안 함 (콘텐츠가 보통 2000자+).
-            발생 시에도 발행필요로 진행 (LLM 판단 신뢰).
+      참고: 슬롯 0개 케이스는 사실상 거의 발생 안 함 (콘텐츠 보통 2000자+).
+            발생 시에도 "발행 필요"로 진행 (LLM 판단 신뢰).
+            단 슬롯 0개 페이지 추적 위해 §19 운영 가드 B7 룰에 따라 로그 DB에 1행 기록.
     tool: tools/notion/update_status.py
 
 quality_gates:
@@ -457,16 +515,33 @@ quality_gates:
     when: after each prepare_data
   - id: image_review_passes
     when: after each generate_image
+    note: Phase 1엔 형식 검증만 (파일 존재, width=1200, min_height 충족). vision OCR은 Phase 2.
 
 budget:
-  per_page_cap_usd: 0.30
-  per_run_cap_usd: 3.00
+  # Phase 1 검증 단계 임시값. 실측 ~$0.70/페이지 (analyze 1회 + slot당 review 1회).
+  # Phase 2 비용 최적화 후 0.30 복귀 목표 (CLI auto-mode Haiku 동시 호출 끄기, page_text 압축).
+  per_page_cap_usd: 1.00       # Phase 1 임시 상한
+  per_page_target_usd: 0.30    # Phase 2 안정화 목표
+  per_run_cap_usd: 3.00        # batch (Phase 2 cron) 진입점에서 누적 추적 필수
   on_exceed: stop_and_log
+
+# 모든 비용 상수는 단일 source — `tools/limits.py` (Phase 2 진입 전 신설). 본 yaml과 1:1 매칭.
 ```
 
 ---
 
 ## 7. 카드 타입 가이드 (Skills)
+
+### 7.0 Phase별 카드 활성화 (v1.2 명시)
+
+| Phase | 활성 카드 | 비고 |
+|---|---|---|
+| **Phase 1 (현재)** | `simple_table`, `chart` (sub_type=line) | MVP 룰 — 다른 카드 만들지 마라 |
+| Phase 2 | + `comparison_table`, `key_points_card` | + chart sub_type bar/donut/pie 점진 추가 |
+| Phase 3 | + `stat_highlight` (template), `document_excerpt` (AI) | gpt-image-2 도입 |
+| Phase 4 | (검토) `kakao_dialogue`, `app_ui_mockup` | 운영 데이터 기반 |
+
+> 이전 v1.1까지 P0 카드 4종 표시 부분(7.4, 7.5)은 **Phase 2 섹션**으로 의미상 이동 — Phase 1엔 정의만 남기고 구현 X.
 
 ### 7.1 공통 skill 구조
 
@@ -506,14 +581,16 @@ default | square | vertical (styles/ehyun_default.yaml 참조)
 ## Generation method
 Template (HTML + Playwright)
 
-## Card size
-default (1200x675) — 행이 많으면 vertical (1080x1350)
+## Card size (v1.2)
+default — width 1200px 고정, height auto (min 480 / max 1400). 행 ~12개 기준.
+초과 시 슬롯을 두 개로 분할 권장 (slot_selection 단). 인스타용 vertical은 Phase 2+ modifier.
 
 ## Variables
-- title: string (옵션)
+- title: string (**필수** — slot_selection.md title 룰)
 - headers: list[string] (2-3개)
 - rows: list[list[string]]
 - footnote: string (옵션)
+- highlight_first_col: bool (좌측 키 컬럼 강조)
 
 ## Style
 - 헤더 행: neutral.100 배경 + neutral.800 텍스트, body 30px, semibold
@@ -545,8 +622,9 @@ default (1200x675) — 행이 많으면 vertical (1080x1350)
 ## Generation method
 Template (HTML + Chart.js + Playwright)
 
-## Card size
-default (1200x675)
+## Card size (v1.2)
+default — width 1200px 고정. Chart.js canvas 자체는 약 480px (시각 비율 일관성).
+카드 전체는 제목+canvas+출처 합산해 ~700~800px 범위에 수렴 (min_height 700 / max_height 800).
 
 ## Sub-types (점진 확장)
 - `line`: 시계열 추이 ← **Phase 1 시작점**
@@ -636,7 +714,7 @@ default (1200x675)
 - [ ] 변호사법 §23 금지 표현 없음
 ```
 
-### 7.4 P0 카드: comparison_table
+### 7.4 Phase 2 카드: comparison_table
 
 ```markdown
 # comparison_table
@@ -647,8 +725,8 @@ default (1200x675)
 ## Generation method
 Template (HTML + Playwright)
 
-## Card size
-default (1200x675) — 항목 많으면 vertical
+## Card size (v1.2)
+default — width 1200px 고정, height auto. 행 많으면 자연 가변 (min 480 / max ~1000 권장).
 
 ## Variables
 - title: string (옵션)
@@ -678,7 +756,7 @@ default (1200x675) — 항목 많으면 vertical
 - [ ] 비교 광고 표현 없음 (변호사법 §23) — 다른 법무법인 명시 X
 ```
 
-### 7.5 P0 카드: key_points_card
+### 7.5 Phase 2 카드: key_points_card
 
 ```markdown
 # key_points_card
@@ -689,8 +767,8 @@ default (1200x675) — 항목 많으면 vertical
 ## Generation method
 Template (HTML + Playwright)
 
-## Card size
-default (1200x675)
+## Card size (v1.2)
+default — width 1200px 고정, height auto. 항목 3-5개 기준 ~600~900px 범위.
 
 ## Variables
 - title: string
@@ -861,15 +939,19 @@ LLM vision으로 이미지 텍스트 추출 후 다음 검사:
 2. 실패 시: 입력 수정 후 1회 재시도
 3. 그래도 실패: 슬롯을 `failed`로 마킹, 계속 진행
 
-## 페이지 status 룰
-- 모든 슬롯 성공 (또는 슬롯 0개) → "발행필요"
-- 1개 이상 슬롯 `failed` → "이미지 작업 중"
-- "이미지 작업 중" 페이지는 cron이 다시 처리하지 않음 (사람 개입 대기)
+## 페이지 status 룰 (운영 표기 — 띄어쓰기 그대로)
+- 모든 슬롯 성공 (또는 슬롯 0개) → `발행 필요`
+- 1개 이상 슬롯 `failed` → `이미지 작업 중`
+- `이미지 작업 중` 페이지는 cron이 다시 처리하지 않음 (사람 개입 대기)
 
-## 비용 가드
-- 페이지당 재생성 총 시도 cap: 4회
-- 초과 시 강제 종료, 페이지를 "이미지 작업 중"으로 마킹
+## 비용 가드 (v1.2 두 단계)
+- 페이지당 cap: $1.00 (Phase 1 임시, 실측 ~$0.70) → $0.30 (Phase 2 안정화 목표)
+- 런당 cap: $3.00 (Phase 2 batch 누적)
+- 슬롯당 시도 cap: 3회 (첫 시도 + 재시도 2회)
+- 초과 시 강제 종료, 페이지를 `이미지 작업 중`으로 마킹
 ```
+
+> 실제 skill 파일은 `skills/meta/regen_policy.md`. 본 인용 블록은 plan SOT 참조용 — drift 발생 시 plan 먼저 갱신.
 
 ### 8.5 `skills/meta/notion_placement.md`
 
@@ -1043,10 +1125,12 @@ async def review_image(image_path: str, slot: SlotSpec) -> ReviewResult:
 
 본문 구조 동일. 속성 일부 차이. 같은 처리 룰 적용.
 
-**상태 속성** (이름: `상태`, 한글, 띄어쓰기 포함): Phase 0에서 Notion API로 자동 fetch. 시스템이 사용하는 옵션 값:
-- 입력: `이미지 필요`
+**상태 속성** — 이름 `상태` (한글), 옵션 값은 모두 **공백 포함** (운영 컨벤션 v1.1 align). 시스템이 사용하는 옵션:
+- 입력: `이미지 필요` (공백 O)
 - 출력 1: `발행 필요` (모든 슬롯 성공 또는 슬롯 0개)
 - 출력 2: `이미지 작업 중` (1개 이상 슬롯 실패)
+
+> ※ 본 계획서 안 모든 코드 예시·설명에서 `이미지필요`(공백 X) 같은 표기 발견 시 운영 표기로 수정. `tools/notion/get_status_property_type()`이 select/status 타입 자동 감지 후 페이로드 분기.
 
 ### 10.2 신규: `이미지 작업 로그` DB
 
@@ -1228,17 +1312,21 @@ comparison_table:
 | Claude Sonnet (분석/리뷰) | ~$0.005 / 페이지 |
 | Claude vision (image_review) | ~$0.005 / 이미지 |
 
-### 13.2 페이지당 평균
-- **P0 (템플릿만)**: ~$0.02
-- **P1 (AI 일부)**: ~$0.10
-- **P2 (AI 다수)**: ~$0.20
+### 13.2 페이지당 평균 (Phase 1 실측 기반 v1.2)
+- **Phase 1 (템플릿만, 실측)**: ~$0.70 — analyze_content 1회 + slot당 review_input 1회 + CLI auto-mode Haiku 부수 호출
+- Phase 2 최적화 후 목표: ~$0.30 (page_text 압축, auto-mode 끄기, prompt 슬림화)
+- Phase 3 (AI 일부 카드 추가): ~$0.40
+- Phase 4 (AI 다수 카드): ~$0.60
 
 ### 13.3 월 비용 (블로그 + 웹 합쳐서 주 10편 × 4주 = 40편)
-- P0: ~$0.8/월
-- P1: ~$4/월
-- P2: ~$8/월
+- Phase 1 임시: ~$28/월 (40편 × $0.70)
+- Phase 2 안정화 후: ~$12/월
+- Phase 3+: ~$16~24/월
 
-**Cap**: $20/월 (오류/재생성 버퍼).
+**Cap (코드 강제)**:
+- 페이지당 `per_page_cap_usd = 1.00` (Phase 1 임시) → 안정화 후 0.30
+- 런당 `per_run_cap_usd = 3.00` (Phase 2 cron 진입 전 batch 누적 추적 신설)
+- 월 총량 cap 별도 없음 — 페이지/런 cap으로 자연 제한.
 
 ---
 
@@ -1271,76 +1359,83 @@ comparison_table:
 
 ---
 
-## 15. orchestrator.py (참조 구현)
+## 15. orchestrator.py (참조 구현 — v1.2 CLI subprocess 패턴)
+
+> v1.1까지의 `claude_agent_sdk.Agent(...)` 패턴은 폐기됨. SDK 0.1.x가 우리 use case에 비효율 — `tools/llm/_common.py`가 bundled `claude.exe` subprocess로 직접 LLM 호출. orchestrator는 일반 async Python 함수.
+
+### 15.1 페이지 단위 처리 (Phase 1, 구현됨)
+
+`orchestrator.run_for_page(page_id, page_source, log_db_id) -> PageResult` — `scripts/test_phase1.py`가 호출하는 단일 페이지 진입점:
 
 ```python
-"""orchestrator.py — GitHub Actions cron 진입점"""
-import asyncio
-import os
-from claude_agent_sdk import Agent  # ※ 정확한 import는 Phase 0에서 확인
-from tools.notion.fetch_pages import fetch_pages_by_status
-from tools.notion.get_page_content import get_page_blocks
-# ... 다른 tools import
+# orchestrator.py (요지)
+async def run_for_page(
+    page_id: str,
+    page_source: Literal["블로그", "웹"],
+    log_db_id: str,
+) -> PageResult:
+    page = await asyncio.to_thread(lambda: get_client().pages.retrieve(page_id))
+    content_db_id = (page.get("parent") or {}).get("database_id")
+    blocks = await get_page_blocks(page_id)
+    page_text = _blocks_to_text(blocks)             # compact_blocks와 단일 source
 
-async def process_database(agent, db_id: str, source: str) -> None:
-    """한 DB의 처리 대상 페이지들 처리."""
-    pages = await fetch_pages_by_status(
-        database_id=db_id,
-        status="이미지필요",
-        limit=5,
-    )
-    if not pages:
-        return
+    slots, analyze_cost = await analyze_content(blocks)
+    page_cost = analyze_cost
+    results: list[SlotResult] = []
 
+    with tempfile.TemporaryDirectory() as tmp:
+        for slot in slots:
+            r = await _process_slot(slot, page_id, page_source, page_text,
+                                     log_db_id, Path(tmp), page_cost)
+            results.append(r)
+            page_cost += r.cost_usd
+            if page_cost > PER_PAGE_CAP_USD:
+                break                                # 남은 슬롯 폐기
+
+    failed = sum(1 for r in results if not r.passed)
+    final_status = "이미지 작업 중" if failed > 0 else "발행 필요"
+    await update_page_status(page_id, final_status, database_id=content_db_id)
+    return PageResult(...)
+```
+
+### 15.2 batch 진입점 (Phase 2 진입 시 신설)
+
+```python
+# orchestrator.py main() — Phase 2 cron 진입점
+async def process_database(db_id: str, source: Literal["블로그", "웹"], log_db_id: str,
+                            run_budget: RunBudget) -> list[PageResult]:
+    """한 DB의 '이미지 필요' 페이지들 처리. 페이지 단위 try/except + run-level 비용 cap."""
+    pages = await fetch_pages_by_status(db_id, status="이미지 필요", limit=5)
+    out: list[PageResult] = []
     for page in pages:
+        if run_budget.exceeded():
+            logger.warning("run-level 비용 cap 도달 — 남은 페이지 폐기")
+            break
         try:
-            blocks = await get_page_blocks(page.id)
-            await agent.run(
-                input={
-                    "page_id": page.id,
-                    "page_source": source,    # "blog" or "web"
-                    "blocks": blocks,
-                },
-                pipeline="blog_image",
-            )
-        except Exception as e:
-            print(f"[{source}] 페이지 {page.id} 처리 실패: {e}")
-            # 다음 페이지로 계속
+            r = await run_for_page(page["id"], source, log_db_id)
+            run_budget.add(r.cost_usd)
+            out.append(r)
+        except Exception:
+            logger.exception("[%s] 페이지 %s 처리 실패 — 다음 페이지", source, page["id"])
+        await asyncio.sleep(0.5)                    # Notion rate limit 보호
+    return out
+
 
 async def main() -> None:
-    agent = Agent(
-        model="<phase-0-에서-확정>",      # ※ Phase 0에서 SDK 문서 참조하여 확정
-        skills_dir="./skills",
-        pipeline_path="./pipeline_defs/blog_image.yaml",
-        tools=[
-            # notion
-            fetch_pages_by_status,
-            get_page_blocks,
-            upload_image,
-            insert_image_block,
-            update_page_status,
-            log_metadata,
-            # render
-            render_template,
-            render_chart,
-            png_to_webp,
-            # llm
-            analyze_blocks,
-            review_input,
-            review_image,
-            # image (P3+)
-            # generate_image,
-        ],
-        budget_cap_usd=3.00,
-    )
+    log_db_id = os.environ["NOTION_DB_LOG"]
+    budget = RunBudget(cap_usd=PER_RUN_CAP_USD)     # tools/limits.py에서 가져옴
+    await process_database(os.environ["NOTION_DB_BLOG"], "블로그", log_db_id, budget)
+    await process_database(os.environ["NOTION_DB_WEB"],  "웹",     log_db_id, budget)
 
-    # 두 콘텐츠 DB 처리
-    await process_database(agent, os.environ["NOTION_DB_BLOG"], "blog")
-    await process_database(agent, os.environ["NOTION_DB_WEB"], "web")
 
 if __name__ == "__main__":
     asyncio.run(main())
 ```
+
+> Phase 2 진입 전 신설할 의존:
+> - `tools/limits.py` — 비용 cap / 시도 횟수 / prompt 한계 등 단일 source 상수
+> - `tools/notion/_retry.py` — 429/5xx exponential backoff (notion-client 3.0은 자체 backoff 없음)
+> - `RunBudget` — run 누적 비용 추적
 
 ---
 
@@ -1383,11 +1478,14 @@ jobs:
 
 ## 17. 미결정 사항 (Phase별 결정)
 
-| 항목 | 결정 시점 |
-|--|--|
-| 인블로그 권장 사이즈가 default 3종으로 충분한지 | Phase 1 검증 시점 |
-| claude-agent-sdk 정확한 API/모델 ID | Phase 0 setup |
-| 변호사법 차단 표현 추가/조정 | Phase 3 운영 후 |
+| 항목 | 결정 시점 | 상태 |
+|--|--|--|
+| 인블로그 권장 사이즈가 default(width 1200) 단일로 충분한지 | Phase 1 검증 끝 | 진행중 |
+| claude-agent-sdk 정확한 API/모델 ID | Phase 0 setup | ✅ 결정 (v1.2: SDK 우회 + bundled CLI subprocess + Sonnet 4.6) |
+| skills 자동 로드 옵션 A vs B | Phase 1 진입 | ✅ 결정 (v1.2: 옵션 A — system_prompt에 직접 inject) |
+| 변호사법 차단 표현 추가/조정 | Phase 3 운영 후 | 보류 |
+| `tools/limits.py` 단일 source 상수 위치 | Phase 2 cron 진입 전 | 보류 (Phase 2 작업) |
+| Phase 1 → Phase 2 비용 cap 복귀 ($1.00 → $0.30) | Phase 2 비용 최적화 후 | 보류 |
 
 ---
 
@@ -1405,7 +1503,114 @@ jobs:
 
 ---
 
+## 19. 운영 가드 (Edge case 정책 — v1.2 신설)
+
+> 코드 구현은 Phase 1 안에서 즉시 가능한 것 / Phase 2 cron 진입 전 필수인 것으로 분류. 본 섹션이 단일 source — 새 edge case 발견 시 본 섹션을 먼저 갱신한 뒤 코드 동기화.
+
+### 19.1 멱등성 (idempotency) — Phase 2 진입 전 필수
+- **위험**: 동일 page_id가 두 번 처리되면 image block이 **중복 삽입**됨. 운영팀이 한 페이지를 `이미지 필요`로 되돌렸을 때, 또는 cron 재시도 시 즉시 발생.
+- **룰**: `run_for_page` 시작 시 로그 DB에서 `관련 페이지 = mention(page_id)` row 검색. 이력 있으면:
+  1. 운영자가 의도적으로 재처리 원하면 기존 image block을 본문에서 제거 후 진행 (Phase 3에서 가드 강화)
+  2. Phase 1엔 단순히 skip + warning 로그 + page status 그대로 두기
+
+### 19.2 block_id ancestor 검증 — Phase 1 즉시 적용
+- **위험**: LLM이 `position_after_block_id`를 환각하거나 다른 페이지 block UUID를 던질 수 있음. `insert_image_block`이 real_parent 동적 resolve로 일부 완화하지만, **다른 페이지의 block parent**일 경우 다른 페이지에 이미지가 박힐 수 있음.
+- **룰**: insert 직전 `target.parent` 또는 ancestor traversal로 `page_id == 처리 중인 page_id` 검증 필수. 실패 시 슬롯 폐기 + issues에 "block_id가 처리 페이지에 없음" 기록.
+
+### 19.3 Notion API rate limit (3 req/s) — Phase 2 진입 전 필수
+- **위험**: 페이지당 6~20 호출 (page retrieve / blocks list / upload create+send / insert / log row / status update). 슬롯 3개면 한꺼번에 쏠림.
+- **룰**:
+  - notion-client 호출 wrapper에 `tenacity` 기반 exponential backoff (429/5xx, 최대 5회 retry).
+  - batch 진입점에서 페이지 사이 `await asyncio.sleep(0.5)`.
+
+### 19.4 Chart.js / Pretendard 로드 실패 시 silent corruption — Phase 1 즉시 적용
+- **위험**:
+  - 폰트 미로드 → fallback sans-serif → 28px+ 가독성 룰 시각적 위반.
+  - Chart.js CDN 로드 실패 → 빈 캔버스 캡처. 파일 크기 검증(>1KB)은 통과 가능.
+- **룰**: `template_render` 캡처 직전:
+  ```python
+  await page.wait_for_function(
+      "window.Chart != null && document.fonts.check('700 30px Pretendard')",
+      timeout=5000,
+  )
+  ```
+  실패 시 슬롯 폐기 + issues에 "폰트/Chart.js 로드 실패" 기록.
+
+### 19.5 review_input 실패 시 로그 누락 — Phase 1 즉시 적용
+- **위험**: review_input fail + revised_data None 케이스에서 `log_metadata` 호출 안 됨 → regen_policy.md "모든 시도 1행 기록" 룰 위반. 운영팀 추적 불가.
+- **룰**: review_input 단계에서 슬롯 폐기 시에도 `log_metadata` 호출 (`attempts=0`, `review_passed=False`, `notion_block_id=None`, issues 포함). `시도 횟수 = 0`의 의미를 "review_input에서 폐기"로 정의.
+
+### 19.6 슬롯 0개 페이지 추적 — Phase 1 즉시 적용
+- **위험**: LLM이 빈 `image_slots: []` 반환 → status="발행 필요"로 통과 + 로그 DB row 0개. 운영팀이 "왜 이미지가 안 들어갔지?" 확인 불가.
+- **룰**: 로그 DB `타입` select에 `없음` 옵션 추가. analyze 단에서 슬롯 0개면 1행 기록 (`타입=없음`, `생성 방식=template`, `비용=analyze_cost`, `시도 횟수=0`).
+
+### 19.7 변호사법 §23 키워드 코드 상수화 — Phase 2 진입 전 권장
+- **위험**: prompt_review.md의 키워드 리스트가 markdown으로만 존재 → LLM이 매번 재해석. 새 키워드 추가 누락 + 테스트 불가.
+- **룰**: `tools/compliance/keywords.py` 단일 source 상수. analyze_content / review_input / image_review 모두 동일 source 참조. 1차 regex 패스(빠른 차단) + 2차 LLM 패스(맥락 위반).
+
+### 19.8 본문 길이 한계 fallback — Phase 1 즉시 적용
+- **위험**: `MAX_USER_PROMPT_CHARS = 20_000` 초과 시 RuntimeError raise → 페이지 fail. 압축/청크 fallback 없음.
+- **룰**: 본문 > 18K이면 H2 단위로 청크 분할해 슬롯 분석 2-pass. 또는 본문을 H2 헤딩 + 첫 단락만 유지하는 압축 모드 fallback.
+
+### 19.9 페이지 처리 중 unhandled exception — Phase 1 즉시 적용
+- **위험**: `run_for_page`의 `get_page_blocks` / `get_client().pages.retrieve` 등 시작 단계 예외가 그대로 위로 전파. test_phase1.py도 catch 안 함.
+- **룰**: page-level try/except (Phase 2 batch에선 process_database가 담당, Phase 1엔 test_phase1.py가 stack trace 대신 사용자 친화 메시지 출력).
+
+### 19.10 file_upload 고아 (낮음, 인지만)
+- upload 성공 → insert_image_block 실패 N회 → file_upload_id가 1시간 뒤 자동 archive (Notion 정책). 비용 누수 없음.
+- 단 슬롯 시도 N회 = upload N회. 첫 upload만 보존하고 retry는 insert만 재시도하면 효율적 (Phase 2 최적화 항목).
+
+---
+
+## 20. Phase 2 진입 체크리스트 (cron 활성화 전제 — v1.2 신설)
+
+> Phase 1 게이트 통과 후 Phase 2 시작 시 **모두 충족 필요**. 빠진 항목 있으면 cron 활성화 X.
+
+### 20.1 코드 신설
+- [ ] `tools/limits.py` — `PER_PAGE_CAP_USD`, `PER_PAGE_TARGET_USD`, `PER_RUN_CAP_USD`, `PER_SLOT_ATTEMPTS`, `MAX_USER_PROMPT_CHARS` 단일 source.
+- [ ] `tools/notion/_retry.py` — 429/5xx exponential backoff wrapper (tenacity).
+- [ ] `tools/compliance/keywords.py` — 변호사법 §23 키워드 상수.
+- [ ] `orchestrator.main()` + `process_database()` + `RunBudget` (§15.2 참조).
+- [ ] `.github/workflows/cron.yml` — `workflow_dispatch` 우선 활성화, `schedule`은 dry-run 5건 통과 후 활성화.
+
+### 20.2 운영 가드 적용 (§19 항목)
+- [ ] 19.1 멱등성 — 로그 DB 이력 검색 후 skip
+- [ ] 19.2 block_id ancestor 검증
+- [ ] 19.3 rate limit backoff
+- [ ] 19.5 review_input 실패도 로그 1행
+- [ ] 19.6 슬롯 0개 로그 1행 + `타입=없음` 옵션 추가
+
+### 20.3 카드 추가 (Phase 2 스코프)
+- [ ] `comparison_table` (§7.4) — 이현 vs 경쟁사 비교광고 §23 위반 검증 강화
+- [ ] `key_points_card` (§7.5)
+- [ ] chart sub_type `bar` / `donut` / `pie` (각 sub-type 추가 후 사용자 톤 게이트)
+
+### 20.4 image_review 단계
+- [ ] vision OCR로 이미지 텍스트 추출 → §23 키워드 재검사
+- [ ] 사이즈 검증 룰 갱신 (v1.2 §4): width=1200 + min_height ≤ 실제 ≤ max_height
+- [ ] 색상 팔레트 검증 (brand.primary 외 색 사용 시 경고)
+
+### 20.5 비용 최적화 (Phase 1 → Phase 2)
+- [ ] page_text 압축 (analyze_content / review_input의 본문 inject 슬림)
+- [ ] CLI auto-mode 동시 Haiku 호출 끄기 또는 모델 강제
+- [ ] 페이지당 비용 $0.30 이하 안정적 달성 검증
+
+---
+
 ## Changelog
+
+- **v1.2** (2026-05-08): drift 제거 + edge case 정책 신설
+  - **카드 사이즈 정책 확정**: width-fixed (1200px) + content-fit + 타입별 min-height 토큰. 1200×675 fixed 폐기. 차트는 canvas 480px로 시각 비율 일관성 유지. fixed-aspect는 Phase 2+ modifier (`.card--square`, `.card--vertical`).
+  - **claude-agent-sdk 사용 폐기 명시**: bundled `claude.exe`만 subprocess로 직접 호출. SDK API는 우회. 모델 ID `claude-sonnet-4-6` 확정 (§1, §3, §15).
+  - **skills 자동 로드 옵션 A 확정**: `tools/llm/_common.load_skill()`로 markdown을 system_prompt에 직접 inject (§1, §17).
+  - **page_source 영문 → 한글 통일**: `[blog, web]` → `[블로그, 웹]`. 로그 DB select 옵션과 1:1 매칭 (§6, §15).
+  - **status 표기 띄어쓰기 통일**: 본 계획서 안 모든 표기 `이미지 필요` / `발행 필요` / `이미지 작업 중` 공백 포함으로 통일 (§10.1).
+  - **카드 라인업 P0 4종 → Phase 1 = 2종**: §7.0 Phase별 활성화 표 신설. comparison_table / key_points_card는 §7.4·§7.5에 정의만 남기고 Phase 2 카드로 표시.
+  - **비용 cap 두 단계**: Phase 1 임시 $1.00 → Phase 2 안정화 후 $0.30 목표. 실측 ~$0.70 반영 (§6, §13).
+  - **§15 orchestrator 재작성**: SDK 패턴 폐기 → CLI subprocess 패턴. Phase 2 batch 진입점 (process_database / RunBudget) 의사 코드 추가.
+  - **§19 운영 가드 신설** (10항목): 멱등성, block_id ancestor 검증, rate limit, Chart.js/폰트 로드 검증, review_input 로그 누락, 슬롯 0개 추적, §23 키워드 상수화, 본문 길이 fallback 등.
+  - **§20 Phase 2 진입 체크리스트 신설**: 코드 신설 / 운영 가드 적용 / 카드 추가 / image_review / 비용 최적화 5축.
+  - **§17 미결정 사항 갱신**: SDK·skills·status 결정 완료 표시.
 
 - **v1.1** (2026-05-04):
   - 콘텐츠 DB 권한: read **+ write** 명시
@@ -1429,6 +1634,6 @@ jobs:
 
 ---
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Maintainer**: 수연 / 마케팅팀
-**Status**: ✅ 빌드 시작 가능 (사용자 사전 작업 완료 후)
+**Status**: Phase 1 진행 중 (v1.2 = drift 제거 + edge case 정책 신설). Phase 2 진입은 §20 체크리스트 충족 후.

@@ -1,0 +1,108 @@
+<!doctype html>
+<!--
+  simple_table.html — Phase 1
+  토스피드 시드(reference_library/simple_table/tmp_kor_02.png, tmp_kor_05.png) 1:1 재현.
+
+  Variables (Jinja2):
+    title              : str | None        — 표 위 제목 (h2 38px). 없으면 표만 렌더.
+    headers            : list[str]         — 헤더 행 셀.
+    rows               : list[list[str]]   — 본문 행 (셀 개수 = headers 길이).
+    footnote           : str | None        — "* 자료: ..." 형태의 출처 문자열 (옵션).
+    highlight_first_col: bool              — 좌측 키 컬럼을 회색 배경/회색 글자로 (시드 tmp_kor_05 패턴).
+                                             default False (tmp_kor_02 패턴).
+
+  주의:
+    - 셀 정렬은 시드 기준 center-center. plan §7.2의 "첫 컬럼 좌측"과 어긋나지만 시드(=비주얼 진실) 우선.
+    - 데이터 무결성: 본문 텍스트 1자도 변형 금지 (AGENT_GUIDE 절대 룰 #1). 행 추가/축약 금지.
+    - 모든 셀 텍스트 최소 28px (모바일 가독성 게이트).
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="_base.css" />
+  <style>
+    .card { /* default 1200x675; 행이 많으면 caller가 height auto 또는 vertical로 override */
+      gap: var(--sp-xl);
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;     /* 컬럼 폭 균등, 셀 잘림 방지를 위해 word-break은 셀에서 */
+    }
+
+    .table thead th {
+      background: var(--neutral-100);
+      color: var(--neutral-500);
+      font-size: var(--font-body);          /* 30px */
+      font-weight: var(--fw-medium);
+      padding: var(--sp-lg) var(--sp-md);
+      text-align: center;
+      vertical-align: middle;
+      border-bottom: 1px solid var(--neutral-200);
+      line-height: var(--lh-snug);
+    }
+
+    .table tbody td {
+      background: var(--neutral-0);
+      color: var(--neutral-800);
+      font-size: var(--font-body-sm);       /* 28px (절대 minimum) */
+      font-weight: var(--fw-regular);
+      padding: var(--sp-lg) var(--sp-md);
+      text-align: center;
+      vertical-align: middle;
+      border-bottom: 1px solid var(--neutral-200);
+      line-height: var(--lh-snug);
+      word-break: keep-all;                 /* 한국어 줄바꿈 자연스럽게 */
+    }
+
+    .table tbody tr:last-child td { border-bottom: none; }
+
+    /* 좌측 키 컬럼 — tmp_kor_05 시드 패턴 */
+    .table.has-key-col tbody td:first-child {
+      background: var(--neutral-100);
+      color: var(--neutral-500);
+      font-weight: var(--fw-regular);
+    }
+
+    /* 헤더의 첫 컬럼도 같이 톤 매칭 (시드는 헤더 첫 컬럼이 같은 회색) */
+    .table.has-key-col thead th:first-child {
+      /* 헤더는 이미 neutral.100. 색 차이 없으니 그대로 둠. */
+    }
+
+    .footnote {
+      font-size: var(--font-small);          /* 20px */
+      color: var(--neutral-400);
+      font-weight: var(--fw-regular);
+      margin-top: var(--sp-lg);
+      line-height: var(--lh-snug);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    {% if title %}
+      <h2 class="card__title">{{ title }}</h2>
+    {% endif %}
+
+    <table class="table {% if highlight_first_col %}has-key-col{% endif %}">
+      <thead>
+        <tr>
+          {% for h in headers %}<th>{{ h }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            {% for cell in row %}<td>{{ cell }}</td>{% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if footnote %}
+      <p class="footnote">{{ footnote }}</p>
+    {% endif %}
+  </div>
+</body>
+</html>

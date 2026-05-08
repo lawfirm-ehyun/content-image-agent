@@ -1,0 +1,145 @@
+/* templates/_base.css
+ * 이현 디자인 토큰 — styles/ehyun_default.yaml의 CSS 미러.
+ * 토큰 변경 시 두 파일 모두 갱신해야 함 (Phase 2에서 yaml→css 자동 생성 검토).
+ */
+
+@font-face {
+  font-family: 'Pretendard';
+  src: url('../assets/fonts/Pretendard-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('../assets/fonts/Pretendard-Medium.otf') format('opentype');
+  font-weight: 500;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('../assets/fonts/Pretendard-SemiBold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Pretendard';
+  src: url('../assets/fonts/Pretendard-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: block;
+}
+
+:root {
+  /* brand */
+  --brand-primary: #a91c51;
+  --brand-primary-dark: #7d1239;
+  --brand-primary-soft: #fdf2f5;
+
+  /* chart */
+  --chart-primary: #a91c51;
+  --chart-secondary: #c98497;
+  --chart-tertiary: #a1a1aa;
+  --chart-accent-warm: #d97706;
+
+  /* neutral (Tailwind Zinc) */
+  --neutral-900: #18181b;
+  --neutral-800: #27272a;
+  --neutral-700: #3f3f46;
+  --neutral-600: #52525b;
+  --neutral-500: #71717a;
+  --neutral-400: #a1a1aa;
+  --neutral-300: #d4d4d8;
+  --neutral-200: #e4e4e7;
+  --neutral-100: #f4f4f5;
+  --neutral-50:  #fafafa;
+  --neutral-0:   #ffffff;
+
+  /* accent (사용 자제) */
+  --accent-success: #16a34a;
+  --accent-warning: #f59e0b;
+
+  /* typography */
+  --font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --fw-bold: 700;
+
+  --font-display: 96px;
+  --font-h1: 52px;
+  --font-h2: 38px;
+  --font-body-large: 34px;
+  --font-body: 30px;
+  --font-body-sm: 28px;   /* 모바일 가독성 절대 minimum */
+  --font-caption: 24px;
+  --font-small: 20px;     /* 출처/메타 한정 */
+
+  --lh-tight: 1.15;
+  --lh-snug: 1.3;
+  --lh-normal: 1.5;
+
+  /* spacing */
+  --sp-xs: 4px;
+  --sp-sm: 8px;
+  --sp-md: 16px;
+  --sp-lg: 24px;
+  --sp-xl: 32px;
+  --sp-2xl: 48px;
+  --sp-3xl: 64px;
+
+  /* radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 20px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body {
+  font-family: var(--font-family);
+  color: var(--neutral-800);
+  background: var(--neutral-0);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* 기본 카드 컨테이너 — 노션 inline 이미지용 정책:
+ *   - 너비만 고정 (1200px 모바일 가독성 기준)
+ *   - 세로는 콘텐츠 fit (height auto + padding으로 여백 통제)
+ *   - 토스피드처럼 인스타그램용 fixed 비율 카드는 modifier(.card--vertical 등)로 별도.
+ * 이 정책으로 표/차트의 행 수에 무관하게 시각 균형 유지.
+ */
+.card {
+  width: 1200px;
+  padding: var(--sp-3xl);
+  background: var(--neutral-0);
+  display: flex;
+  flex-direction: column;
+}
+
+/* 인스타그램용 fixed 비율 카드 — Phase 2/3에서 stat_highlight, document_excerpt 등에 활용 */
+.card--vertical { width: 1080px; height: 1350px; }
+.card--square   { width: 1080px; height: 1080px; }
+
+.card__title {
+  font-size: var(--font-h2);
+  font-weight: var(--fw-bold);
+  color: var(--neutral-800);
+  line-height: var(--lh-snug);
+}
+
+.card__source {
+  font-size: var(--font-small);
+  color: var(--neutral-400);
+  font-weight: var(--fw-regular);
+  margin-top: auto;     /* 카드 하단 고정 */
+  padding-top: var(--sp-lg);
+}

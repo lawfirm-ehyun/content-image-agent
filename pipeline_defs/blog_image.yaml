@@ -1,0 +1,78 @@
+# 블로그/웹 페이지 한 건의 이미지를 생성·배치한다.
+# Phase 1: 카드 2종(simple_table + chart_line)만 활성, 수동 trigger.
+name: blog_image
+version: 1.1.0
+description: 블로그/웹 페이지 한 건의 이미지를 생성·배치한다
+
+input_schema:
+  page_id: string
+  page_source: enum [블로그, 웹]
+  notion_page_blocks: array
+
+stages:
+  - name: analyze_content
+    skill: meta/slot_selection.md
+    tool: tools/llm/analyze_content.py
+    output: { image_slots: array }
+    description: |
+      본문 블록을 읽고 image_slots 결정 (0개도 가능, 보통 1-3개).
+      각 슬롯: { type, sub_type?, position_after_block_id, extracted_data }
+      Phase 1 활성 type: simple_table | chart(sub_type=line). 다른 패턴은 슬롯 결정 X.
+
+  - name: generate_per_slot
+    foreach: image_slots
+    sub_stages:
+      - name: prepare_data
+        skill: image_types/{slot.type}.md
+        description: extracted_data를 템플릿 variables 형태로 정규화
+
+      - name: review_input
+        skill: meta/prompt_review.md
+        tool: tools/llm/review.py
+        output: { passed: boolean, issues: array, revised_data: object|null }
+        on_fail: revise (max 1회 — revised_data로 재시도)
+
+      - name: generate_image
+        tool: |
+          if slot.type == "chart":
+            tools/render/chart_render.py:render_chart_line
+          else:
+            tools/render/template_render.py:render_template
+        post: tools/image/webp_converter.py:png_to_webp
+        output: { webp_path: string, cost_usd: float }
+
+      - name: review_image
+        skill: meta/image_review.md
+        description: |
+          Phase 1 = 형식 검증만 (파일 존재, 크기, 사이즈).
+          vision OCR 검사는 Phase 2에서.
+        on_fail:
+          - regenerate (max 1 회) per regen_policy.md
+          - if still fail: mark slot as `failed`, continue
+
+      - name: upload_to_notion
+        tool: |
+          tools/notion/upload_image.py:upload_image
+          tools/notion/insert_image_block.py:insert_image_block
+        output: { file_upload_id: string, new_block_id: string }
+
+      - name: log_metadata
+        tool: tools/notion/log_metadata.py:log_metadata
+        description: 슬롯 단위 1행 (성공/실패 무관)
+
+  - name: update_status
+    skill: meta/regen_policy.md
+    tool: tools/notion/update_status.py:update_page_status
+    description: |
+      모든 슬롯 성공 → "발행 필요"
+      1개 이상 슬롯 failed → "이미지 작업 중"
+      슬롯 0개 → "발행 필요"
+
+# 비용 가드 (plan §13 v1.2 / regen_policy.md)
+# 모든 값은 Phase 2 진입 전 `tools/limits.py` 단일 source로 추출 예정.
+limits:
+  per_page_cap_usd: 1.00     # Phase 1 임시 (실측 ~$0.70 반영). 안정화 후 0.30 복귀 목표.
+  per_page_target_usd: 0.30  # Phase 2 목표 (page_text 압축 + auto-mode 끄기 후)
+  per_run_cap_usd: 3.00      # batch 누적 (Phase 2 cron 진입 시 RunBudget로 추적)
+  per_slot_attempts: 3       # 첫 시도 + 재시도 2회
+  max_user_prompt_chars: 20000  # CLI argv 한계. 초과 시 H2 청크 fallback (plan §19.8)

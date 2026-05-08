@@ -4,7 +4,9 @@
       "Bash(gh repo *)",
       "WebFetch(domain:github.com)",
       "Bash(uv --version)",
-      "Bash(git --version)"
+      "Bash(git --version)",
+      "Bash(.venv/Scripts/python -c ' *)",
+      "Bash(uv sync *)"
     ]
   }
 }

@@ -72,11 +72,14 @@ radius:  # px
   lg: 12
   xl: 20
 
-# 카드 사이즈 프리셋 (비율별)
+# 카드 사이즈 정책
+#   - default(노션 inline): 너비만 고정(1200px), 세로는 콘텐츠 fit. height: auto.
+#   - square / vertical: 인스타그램 등 fixed-aspect 채널용. Phase 2+ 활용.
+# 1200×675 같은 16:9 fixed 비율은 폐기 — 표/차트 콘텐츠 분량에 따라 시각 균형 깨짐.
 card_sizes:
-  default: { width: 1200, height: 675, ratio: '16:9' }   # 본문 inline
-  square:  { width: 1080, height: 1080, ratio: '1:1' }
-  vertical:{ width: 1080, height: 1350, ratio: '4:5' }
+  default:  { width: 1200, height: auto, note: '본문 inline. 콘텐츠 fit.' }
+  square:   { width: 1080, height: 1080, ratio: '1:1', note: '인스타용. Phase 2+' }
+  vertical: { width: 1080, height: 1350, ratio: '4:5', note: '인스타용. Phase 2+' }
 
 # 카드 공통 룰
 card_defaults:

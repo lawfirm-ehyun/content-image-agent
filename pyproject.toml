@@ -8,7 +8,7 @@ license = { text = "Proprietary" }
 authors = [{ name = "lawfirm-ehyun" }]
 
 dependencies = [
-    "claude-agent-sdk>=0.1.0",
+    "claude-agent-sdk>=0.1.77",
     "notion-client>=2.2.1",
     "playwright>=1.48.0",
     "pillow>=11.0.0",
@@ -17,6 +17,7 @@ dependencies = [
     "httpx>=0.28.0",
     "openai>=1.55.0",
     "python-dotenv>=1.0.0",
+    "jinja2>=3.1.4",
 ]
 
 [dependency-groups]
