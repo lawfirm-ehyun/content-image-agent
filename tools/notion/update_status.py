@@ -7,9 +7,8 @@
 """
 from __future__ import annotations
 
-import asyncio
-
 from tools.notion import get_client, get_status_property_type
+from tools.notion._retry import notion_call
 
 
 async def update_page_status(
@@ -24,15 +23,10 @@ async def update_page_status(
     status는 미리 존재하는 옵션이어야 함 (Phase 0 check_notion.py가 검증).
     database_id는 속성 타입 retrieve 위해 필수.
     """
-    await asyncio.to_thread(_update_sync, page_id, status, database_id, status_property)
-
-
-def _update_sync(
-    page_id: str, status: str, database_id: str, status_property: str,
-) -> None:
     client = get_client()
     ptype = get_status_property_type(database_id, status_property)  # 'select' | 'status'
-    client.pages.update(
+    await notion_call(
+        client.pages.update,
         page_id=page_id,
         properties={status_property: {ptype: {"name": status}}},
     )

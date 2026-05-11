@@ -12,12 +12,14 @@ from pathlib import Path
 
 from PIL import Image
 
+from tools.limits import WEBP_LOSSLESS_DEFAULT, WEBP_METHOD
+
 
 def png_to_webp(
     png_path: Path,
     webp_path: Path | None = None,
     *,
-    lossless: bool = True,
+    lossless: bool = WEBP_LOSSLESS_DEFAULT,
     quality: int = 92,
 ) -> Path:
     """PNG을 WebP로 변환. 변환된 경로 반환.
@@ -39,6 +41,6 @@ def png_to_webp(
             format="WEBP",
             quality=quality,
             lossless=lossless,
-            method=6,    # 압축 노력 0~6. 6 = 느리지만 가장 작음. 일회성 후처리라 OK.
+            method=WEBP_METHOD,
         )
     return webp_path

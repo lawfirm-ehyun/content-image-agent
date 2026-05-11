@@ -8,13 +8,10 @@ import json
 import logging
 from typing import Any
 
+from tools.limits import ANALYZE_BUDGET_USD, MAX_BLOCKS_PROMPT_CHARS
 from tools.llm._common import compact_blocks, load_skill, query_json
 
 logger = logging.getLogger(__name__)
-
-# user_prompt 한계 MAX_USER_PROMPT_CHARS(20K)에서 system_prompt·구조 텍스트 빼고 본문에 남길 여유.
-# 초과 시 압축 모드 fallback (§19.8).
-MAX_BLOCKS_PROMPT_CHARS = 18_000
 
 
 def _compress_for_analyze(compacted: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -83,7 +80,7 @@ async def analyze_content(blocks: list[dict[str, Any]]) -> tuple[list[dict[str, 
     # 페이지당 1회 호출. v1.3에서 slot_selection 스킬이 두꺼워져 cache_creation 47K + output 13K
     # 토큰까지 늘어 실측 ~$0.37. cap 0.30 도달 사례 발생 → 0.50으로 상향.
     # (페이지 cap $1.50 안에서 안전: analyze 0.50 + review × 슬롯3 × 0.30 = $1.40)
-    parsed, cost = await query_json(user_prompt, system, max_budget_usd=0.50)
+    parsed, cost = await query_json(user_prompt, system, max_budget_usd=ANALYZE_BUDGET_USD)
     if isinstance(parsed, dict) and "image_slots" in parsed:
         return parsed["image_slots"], cost
     if isinstance(parsed, list):

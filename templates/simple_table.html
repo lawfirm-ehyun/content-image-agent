@@ -82,8 +82,10 @@
     }
 
     .footnote {
-      font-size: var(--font-small);          /* 20px */
-      color: var(--neutral-400);
+      /* v1.4: footnote 폰트/색 일관성 — 32px caption + neutral-500.
+       * 모바일 30% 축소 시 ~10px 가독 (26px는 ~8px 한계). 7개 카드 모두 통일. */
+      font-size: var(--font-caption);        /* 32px */
+      color: var(--neutral-500);
       font-weight: var(--fw-regular);
       margin-top: var(--sp-lg);
       line-height: var(--lh-snug);

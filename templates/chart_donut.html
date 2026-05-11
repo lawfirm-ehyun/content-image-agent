@@ -1,0 +1,144 @@
+<!doctype html>
+<!--
+  chart_donut.html — Phase 2 (donut + pie 공용)
+  분포 시각화. 좌측 chart canvas + 우측 범례 (label + value).
+  cutout 변수로 donut(55%)/pie(0) 분기. 외 디자인 100% 공통.
+
+  Variables (Jinja2):
+    title        : str         — 차트 제목.
+    labels       : list[str]   — slice 이름.
+    values       : list[number] — slice 값 (Chart.js가 자동 % 환산).
+    point_labels : list[str] | None — slice 표시 텍스트 (예: "1,240건").
+                                      None이면 자동 % 계산.
+    colors       : list[str]   — chart-mono palette에서 자동 매핑된 색 (caller 책임).
+    cutout       : str | int   — donut "55%" / pie 0.
+    source       : str | None.
+
+  컬러: brand wine-magenta monochromatic (chart-mono-1~5 + chart-mono-other).
+        '기타' 카테고리는 neutral fallback (의미 신호 — brand 톤 X).
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="_base.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <style>
+    .card {
+      /* v1.4: chart 카테고리 배경 통일 — chart_line/bar와 같은 neutral-100 토스피드 톤. */
+      background: var(--neutral-100);
+      gap: var(--sp-xl);
+    }
+
+    /* chart + 범례 좌우 분할 */
+    .chart-with-legend {
+      display: flex;
+      gap: var(--sp-2xl);
+      align-items: center;
+      flex: 1;
+      min-height: 0;
+    }
+    .chart-wrap {
+      width: 480px;
+      height: 480px;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .legend {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-lg);
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .legend__item {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-md);
+    }
+    .legend__swatch {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+    }
+    .legend__label {
+      flex: 1;
+      font-size: var(--font-body-sm);   /* 40px */
+      color: var(--neutral-800);
+      font-weight: var(--fw-medium);
+      line-height: var(--lh-snug);
+    }
+    .legend__value {
+      font-size: var(--font-body-sm);
+      color: var(--neutral-500);
+      font-weight: var(--fw-regular);
+      font-feature-settings: "tnum";
+    }
+
+    .footnote {
+      /* v1.4: footnote 통일 — 32px caption + neutral-500 (7개 카드 공통) */
+      font-size: var(--font-caption);
+      color: var(--neutral-500);
+      line-height: var(--lh-snug);
+    }
+  </style>
+</head>
+<body>
+  <div class="card card--chart">
+    <h2 class="card__title">{{ title }}</h2>
+
+    <div class="chart-with-legend">
+      <div class="chart-wrap">
+        <canvas id="chart"></canvas>
+      </div>
+
+      <ul class="legend">
+        {% for i in range(labels|length) %}
+          <li class="legend__item">
+            <span class="legend__swatch" style="background: {{ colors[i] }};"></span>
+            <span class="legend__label">{{ labels[i] }}</span>
+            <span class="legend__value">
+              {%- if point_labels -%}{{ point_labels[i] }}{%- else -%}{{ values[i] }}{%- endif -%}
+            </span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    {% if source %}
+      <p class="footnote">{{ source }}</p>
+    {% endif %}
+  </div>
+
+  <script>
+    const LABELS = {{ labels | tojson }};
+    const VALUES = {{ values | tojson }};
+    const COLORS = {{ colors | tojson }};
+    const CUTOUT = {{ cutout | tojson }};
+
+    new Chart(document.getElementById('chart'), {
+      type: 'doughnut',
+      data: {
+        labels: LABELS,
+        datasets: [{
+          data: VALUES,
+          backgroundColor: COLORS,
+          borderWidth: 0,                 // slice 사이 보더 없음 — 미니멀 톤
+          spacing: 0,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: CUTOUT,                   // donut "55%" / pie 0
+        animation: false,
+        layout: { padding: 0 },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      },
+    });
+  </script>
+</body>
+</html>

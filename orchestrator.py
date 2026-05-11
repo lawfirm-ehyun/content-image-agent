@@ -14,39 +14,41 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+from tools.budget import RunBudget
 from tools.image.webp_converter import png_to_webp
+from tools.limits import PER_PAGE_CAP_USD, PER_RUN_CAP_USD, PER_SLOT_ATTEMPTS
 from tools.llm._common import compact_blocks
 from tools.llm.analyze_content import analyze_content
 from tools.llm.review import review_input
-from tools.notion import get_client
-from tools.notion.fetch_pages import fetch_pages_by_status  # noqa: F401 (run_many에서 사용 예정)
+from tools.notion import get_client, norm_uuid
+from tools.notion.fetch_pages import fetch_pages_by_status
 from tools.notion.get_page_content import get_page_blocks
 from tools.notion.insert_image_block import insert_image_block
-from tools.notion.log_metadata import log_metadata
+from tools.notion.log_metadata import get_logged_page_ids, log_metadata
 from tools.notion.update_status import update_page_status
 from tools.notion.upload_image import upload_image
 from tools.render.chart_render import (
+    ChartBarData,
     ChartDataError,
+    ChartDonutData,
     ChartLineData,
+    render_chart_bar,
+    render_chart_donut,
     render_chart_line,
+    render_chart_pie,
 )
 from tools.render.template_render import render_template
 
 logger = logging.getLogger(__name__)
 
-# Phase 1 검증 단계 한정 — 안정화 후 plan §13 기준 0.30 복귀 목표.
-# v1.3 슬롯 룰 강화 후 실측: analyze ~$0.37 + review × 2슬롯 ~$0.30 = 합 ~$0.97/페이지.
-# 슬롯 3개 케이스 대비 cap $1.50 (analyze 0.50 + review × 3 × 0.30 = 1.40 안전 마진).
-# Phase 2에서 비용 최적화 (skill 압축, CLI auto-mode Haiku 보조 호출 끄기 등).
-PER_PAGE_CAP_USD = 1.50
-PER_SLOT_ATTEMPTS = 3
-SUPPORTED_TYPES = {"simple_table", "chart"}
-SUPPORTED_CHART_SUB_TYPES = {"line"}
+SUPPORTED_TYPES = {"simple_table", "chart", "comparison_table", "timeline", "key_points_card"}
+SUPPORTED_CHART_SUB_TYPES = {"line", "bar", "donut", "pie"}
 
 
 @dataclass
@@ -120,25 +122,48 @@ async def _render_slot(
     data = slot["extracted_data"]
     if stype == "chart":
         sub = slot.get("sub_type")
-        if sub != "line":
-            raise ValueError(f"Phase 1엔 chart sub_type='line'만 지원 (받은 값: {sub!r})")
+        if sub not in SUPPORTED_CHART_SUB_TYPES:
+            raise ValueError(
+                f"지원되지 않는 chart sub_type={sub!r} "
+                f"(지원: {sorted(SUPPORTED_CHART_SUB_TYPES)})"
+            )
         # 필수 필드 누락은 ChartDataError로 raise — orchestrator가 재시도 없이 즉시 폐기.
-        # LLM이 chart 슬롯 결정하고도 필드 못 채운 케이스는 재시도해도 같은 응답.
-        missing = [k for k in ("title", "labels", "values", "point_labels") if k not in data]
+        # line/bar는 point_labels 필수, donut/pie는 옵션 (자동 % 계산 가능).
+        line_bar_required = ("title", "labels", "values", "point_labels")
+        donut_pie_required = ("title", "labels", "values")
+        required = donut_pie_required if sub in {"donut", "pie"} else line_bar_required
+        missing = [k for k in required if k not in data]
         if missing:
-            raise ChartDataError(f"chart 슬롯 필수 필드 누락: {missing}")
-        chart = ChartLineData(
-            title=data["title"],
-            labels=data["labels"],
-            values=data["values"],
-            point_labels=data["point_labels"],
-            sub_labels=data.get("sub_labels"),
-            y_unit=data.get("y_unit"),
-            source=data.get("source"),
-            y_min=data.get("y_min"),
-            y_max=data.get("y_max"),
-        )
-        await render_chart_line(chart, out_png)
+            raise ChartDataError(f"chart sub_type={sub} 필수 필드 누락: {missing}")
+
+        if sub in {"line", "bar"}:
+            common_kwargs = dict(
+                title=data["title"],
+                labels=data["labels"],
+                values=data["values"],
+                point_labels=data["point_labels"],
+                sub_labels=data.get("sub_labels"),
+                y_unit=data.get("y_unit"),
+                source=data.get("source"),
+                y_min=data.get("y_min"),
+                y_max=data.get("y_max"),
+            )
+            if sub == "line":
+                await render_chart_line(ChartLineData(**common_kwargs), out_png)
+            else:
+                await render_chart_bar(ChartBarData(**common_kwargs), out_png)
+        else:  # donut / pie
+            donut_data = ChartDonutData(
+                title=data["title"],
+                labels=data["labels"],
+                values=data["values"],
+                point_labels=data.get("point_labels"),
+                source=data.get("source"),
+            )
+            if sub == "donut":
+                await render_chart_donut(donut_data, out_png)
+            else:
+                await render_chart_pie(donut_data, out_png)
     elif stype == "simple_table":
         await render_template(
             "simple_table",
@@ -151,8 +176,70 @@ async def _render_slot(
             ),
             out_png,
         )
+    elif stype == "key_points_card":
+        items = data.get("items") or []
+        if len(items) < 3:
+            raise ChartDataError(
+                f"key_points_card는 최소 3개 항목 필요 (받은 값: {len(items)})"
+            )
+        if len(items) > 6:
+            raise ChartDataError(
+                f"key_points_card는 최대 5개 권장, 6개+면 슬롯 분할 (받은 값: {len(items)})"
+            )
+        for i, item in enumerate(items):
+            if not item.get("label"):
+                raise ChartDataError(f"items[{i}]에 label 누락 (필수)")
+        await render_template(
+            "key_points_card",
+            dict(
+                title=data.get("title"),
+                items=items,
+                footnote=data.get("footnote"),
+            ),
+            out_png,
+        )
+    elif stype == "timeline":
+        steps = data.get("steps") or []
+        if not steps or len(steps) < 3:
+            raise ChartDataError(
+                f"timeline은 최소 3 단계 필요 (받은 값: {len(steps)})"
+            )
+        for i, step in enumerate(steps):
+            if not step.get("label"):
+                raise ChartDataError(f"steps[{i}]에 label 누락 (필수)")
+        await render_template(
+            "timeline",
+            dict(
+                title=data.get("title"),
+                steps=steps,
+                footnote=data.get("footnote"),
+            ),
+            out_png,
+        )
+    elif stype == "comparison_table":
+        # 구조 검증 — column_headers/rows length mismatch는 LLM 환각 신호 → 즉시 폐기.
+        # v1.4: highlight_column_index 제거 (§23 광고성 신호 회피) — 모든 비교 컬럼 동등.
+        headers = data["column_headers"]
+        rows = data["rows"]
+        expected_values_len = len(headers) - 1
+        for i, row in enumerate(rows):
+            if len(row.get("values", [])) != expected_values_len:
+                raise ChartDataError(
+                    f"rows[{i}].values 길이({len(row.get('values', []))}) ≠ "
+                    f"column_headers - 1 ({expected_values_len})"
+                )
+        await render_template(
+            "comparison_table",
+            dict(
+                title=data.get("title"),
+                column_headers=headers,
+                rows=rows,
+                footnote=data.get("footnote"),
+            ),
+            out_png,
+        )
     else:
-        raise ValueError(f"Phase 1엔 type={stype!r} 미지원")
+        raise ValueError(f"지원되지 않는 type={stype!r}")
 
 
 async def _process_slot(
@@ -351,3 +438,110 @@ async def run_for_page(
         final_status=final_status,
         slot_results=results,
     )
+
+
+# === Phase 2 batch entry (plan §15.2) =========================================
+# cron/workflow_dispatch에서 호출. 한 DB의 "이미지 필요" 페이지를 RunBudget 한도 안에서 처리.
+# - 페이지 사이 0.5s sleep (Notion rate limit 보호 — §19.3)
+# - page-level try/except로 한 페이지 실패가 다음 페이지 차단 X (§19.9)
+# - run_budget.exceeded() 도달 시 즉시 중단 (§15.2)
+
+_PAGE_INTERVAL_S = 0.5
+_DEFAULT_BATCH_LIMIT = 5
+
+
+async def process_database(
+    db_id: str,
+    source: Literal["블로그", "웹"],
+    log_db_id: str,
+    run_budget: RunBudget,
+    *,
+    limit: int = _DEFAULT_BATCH_LIMIT,
+) -> list[PageResult]:
+    """한 콘텐츠 DB의 '이미지 필요' 페이지를 RunBudget 한도 안에서 처리.
+
+    db_id     : 콘텐츠 DB id (블로그 또는 웹).
+    source    : 로그 DB '출처' select 값 ("블로그" | "웹").
+    log_db_id : 로그 DB id.
+    run_budget: run-level 누적 비용 추적 (limit 도달 시 break).
+    limit     : 한 호출에서 fetch할 페이지 수 (default 5).
+    """
+    pages = await fetch_pages_by_status(db_id, status="이미지 필요", limit=limit)
+    logger.info("[%s] '이미지 필요' 페이지 %d건 fetch", source, len(pages))
+
+    # §19.1 멱등성 — 로그 DB 최근 100건에서 처리 이력 있는 page_id set 조회.
+    # batch 시작 시 1회만 fetch. cron 5건 처리 + 1시간 주기라 최근 100건이면 충분.
+    logged_ids = await get_logged_page_ids(log_db_id, limit=100)
+    logger.info("[%s] 로그 이력 페이지 %d건 로드 — skip 후보", source, len(logged_ids))
+
+    out: list[PageResult] = []
+    for page in pages:
+        if run_budget.exceeded():
+            logger.warning(
+                "[%s] run-level 비용 cap 도달 ($%.4f > $%.2f) — 남은 페이지 폐기",
+                source, run_budget.spent_usd, run_budget.cap_usd,
+            )
+            break
+
+        page_id = page["id"]
+        if norm_uuid(page_id) in logged_ids:
+            logger.warning(
+                "[%s] page %s 처리 이력 발견 — skip (§19.1 멱등성). "
+                "재처리 원하면 로그 row + 기존 image block 수동 제거 필요.",
+                source, page_id,
+            )
+            continue
+
+        try:
+            r = await run_for_page(page_id, source, log_db_id)
+            run_budget.add(r.cost_usd)
+            out.append(r)
+            logger.info(
+                "[%s] page %s 완료 — 슬롯 %d/%d, $%.4f (run 누적 $%.4f)",
+                source, page_id, r.slots_passed, r.slots_total, r.cost_usd,
+                run_budget.spent_usd,
+            )
+        except Exception:
+            logger.exception("[%s] page %s 처리 실패 — 다음 페이지 진행", source, page_id)
+
+        await asyncio.sleep(_PAGE_INTERVAL_S)
+
+    return out
+
+
+async def main() -> None:
+    """cron / workflow_dispatch 진입점. 블로그 + 웹 DB 순차 처리."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
+
+    # .env 지원 — GitHub Actions는 secrets로 환경변수 주입, 로컬은 .env 사용.
+    try:
+        from dotenv import load_dotenv
+        load_dotenv()
+    except ImportError:
+        pass
+
+    log_db_id = os.environ["NOTION_DB_LOG"].strip()
+    blog_db_id = os.environ["NOTION_DB_BLOG"].strip()
+    web_db_id = os.environ["NOTION_DB_WEB"].strip()
+
+    budget = RunBudget(cap_usd=PER_RUN_CAP_USD)
+    logger.info("=== run 시작 — cap $%.2f ===", PER_RUN_CAP_USD)
+
+    blog_results = await process_database(blog_db_id, "블로그", log_db_id, budget)
+    web_results = await process_database(web_db_id, "웹", log_db_id, budget)
+
+    total_pages = len(blog_results) + len(web_results)
+    total_passed = sum(r.slots_passed for r in blog_results + web_results)
+    total_slots = sum(r.slots_total for r in blog_results + web_results)
+    logger.info(
+        "=== run 완료 — 페이지 %d (블로그 %d + 웹 %d), 슬롯 %d/%d 통과, $%.4f / $%.2f ===",
+        total_pages, len(blog_results), len(web_results),
+        total_passed, total_slots, budget.spent_usd, budget.cap_usd,
+    )
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
