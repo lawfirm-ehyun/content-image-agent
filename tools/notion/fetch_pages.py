@@ -5,10 +5,10 @@ multi-source DB이면 data_source.query, single-source이면 databases.query.
 """
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
 from tools.notion import get_client, get_status_property_type, resolve_data_source_id
+from tools.notion._retry import notion_call
 
 
 async def fetch_pages_by_status(
@@ -25,25 +25,20 @@ async def fetch_pages_by_status(
     status_property: 상태 속성 이름. 운영 컨벤션 default = "상태".
     limit          : 최대 페이지 수 (Notion page_size 한도 100).
     """
-    return await asyncio.to_thread(
-        _fetch_sync, database_id, status, status_property, min(limit, 100)
-    )
-
-
-def _fetch_sync(
-    database_id: str, status: str, status_property: str, page_size: int,
-) -> list[dict[str, Any]]:
     client = get_client()
     ds_id = resolve_data_source_id(database_id)
     ptype = get_status_property_type(database_id, status_property)
     filter_obj = {"property": status_property, ptype: {"equals": status}}
+    page_size = min(limit, 100)
 
     if ds_id != database_id:
-        result = client.data_sources.query(
+        result = await notion_call(
+            client.data_sources.query,
             data_source_id=ds_id, filter=filter_obj, page_size=page_size,
         )
     else:
-        result = client.databases.query(
+        result = await notion_call(
+            client.databases.query,
             database_id=database_id, filter=filter_obj, page_size=page_size,
         )
     return result.get("results", [])

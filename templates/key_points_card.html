@@ -1,0 +1,109 @@
+<!doctype html>
+<!--
+  key_points_card.html — Phase 2 (plan §7.5, v1.4)
+  본문에 "핵심 3가지", "5가지 주의사항", "준비 서류" 등 동등한 핵심 정리 패턴.
+  timeline과 달리 순서/흐름이 아닌 **독립적 항목 나열** (연결 line 없음).
+
+  Variables (Jinja2):
+    title    : str | None    — 카드 제목.
+    items    : list[{label, description}] — 3-5개 권장.
+                - label       : str (필수)
+                - description : str (옵션) — 한 줄 설명.
+    footnote : str | None.
+
+  토스피드 톤:
+    - marker: 64px 옅은 brand.primary_soft 배경 + brand.primary 숫자.
+    - 강조 색은 marker 숫자에만 (chart_line의 라인 패턴과 동일).
+    - 위계는 폰트 굵기/크기로.
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="_base.css" />
+  <style>
+    .card { gap: var(--sp-xl); }
+
+    .points {
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-xl);
+    }
+
+    .points__item {
+      display: flex;
+      gap: var(--sp-xl);
+      align-items: flex-start;
+    }
+
+    /* marker — 64px 원, brand.primary_soft + brand.primary 숫자 (timeline marker와 시각 일관) */
+    .points__marker {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--brand-primary-soft);
+      color: var(--brand-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      font-size: 32px;
+      font-weight: var(--fw-bold);
+      font-feature-settings: "tnum";
+      line-height: 1;
+    }
+
+    .points__content {
+      flex: 1;
+      padding-top: 6px;                 /* marker 중앙과 label baseline 시각 정렬 */
+    }
+
+    .points__label {
+      font-size: var(--font-body);      /* 42px */
+      font-weight: var(--fw-bold);
+      color: var(--neutral-900);
+      line-height: var(--lh-snug);
+      margin-bottom: var(--sp-sm);
+    }
+
+    .points__description {
+      font-size: var(--font-body-sm);   /* 40px */
+      color: var(--neutral-700);
+      font-weight: var(--fw-regular);
+      line-height: var(--lh-normal);
+    }
+
+    .footnote {
+      font-size: var(--font-caption);   /* 32px */
+      color: var(--neutral-500);
+      font-weight: var(--fw-regular);
+      margin-top: var(--sp-lg);
+      line-height: var(--lh-snug);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    {% if title %}
+      <h2 class="card__title">{{ title }}</h2>
+    {% endif %}
+
+    <ol class="points">
+      {% for item in items %}
+        <li class="points__item">
+          <div class="points__marker">{{ loop.index }}</div>
+          <div class="points__content">
+            <h3 class="points__label">{{ item['label'] }}</h3>
+            {% if item.description %}
+              <p class="points__description">{{ item.description }}</p>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+
+    {% if footnote %}
+      <p class="footnote">{{ footnote }}</p>
+    {% endif %}
+  </div>
+</body>
+</html>

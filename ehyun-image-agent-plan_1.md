@@ -536,12 +536,12 @@ budget:
 
 | Phase | 활성 카드 | 비고 |
 |---|---|---|
-| **Phase 1 (현재)** | `simple_table`, `chart` (sub_type=line) | MVP 룰 — 다른 카드 만들지 마라 |
-| Phase 2 | + `comparison_table`, `key_points_card` | + chart sub_type bar/donut/pie 점진 추가 |
+| **Phase 1** | `simple_table`, `chart` (sub_type=line) | MVP — 4건 e2e 통과 |
+| **Phase 2 (현재)** | + `comparison_table`, `key_points_card`, `timeline`, chart `bar`/`donut`/`pie` | 토스피드 톤 + 우리 brand wine-magenta palette 일관 |
 | Phase 3 | + `stat_highlight` (template), `document_excerpt` (AI) | gpt-image-2 도입 |
 | Phase 4 | (검토) `kakao_dialogue`, `app_ui_mockup` | 운영 데이터 기반 |
 
-> 이전 v1.1까지 P0 카드 4종 표시 부분(7.4, 7.5)은 **Phase 2 섹션**으로 의미상 이동 — Phase 1엔 정의만 남기고 구현 X.
+> v1.4: Phase 2 카드 5종 모두 구현 완료 (timeline은 plan 외 신설 — 법률 절차 시각화 요구). chart sub_type bar/donut/pie 정식 활성.
 
 ### 7.1 공통 skill 구조
 
@@ -714,88 +714,87 @@ default — width 1200px 고정. Chart.js canvas 자체는 약 480px (시각 비
 - [ ] 변호사법 §23 금지 표현 없음
 ```
 
-### 7.4 Phase 2 카드: comparison_table
+### 7.4 Phase 2 카드: comparison_table (v1.4 §23 안전 재설계)
+
+옵션 A vs B (또는 N) 항목별 비교. **highlight_column_index 제거** — 한 컬럼을 시각적으로 띄우면 광고성 신호로 읽혀 §23 위반 경계. 모든 비교 컬럼 동등 표시.
 
 ```markdown
 # comparison_table
 
 ## When to use
-이현 vs 경쟁사, 옵션 A vs B 등 두 개 이상의 옵션을 항목별 비교.
+협의 vs 재판 이혼, 일반 vs 간이 절차 등 **법적 절차/유형 비교**.
+다른 법무법인과 비교 X — `tools/compliance/keywords.py`의 비교 광고 카테고리(`타 로펌`, `다른 법무법인`, `경쟁사`)가 1차 regex pass로 차단.
 
-## Generation method
-Template (HTML + Playwright)
-
-## Card size (v1.2)
-default — width 1200px 고정, height auto. 행 많으면 자연 가변 (min 480 / max ~1000 권장).
-
-## Variables
+## Variables (v1.4 — highlight 제거)
 - title: string (옵션)
-- column_headers: list[string]
-- highlight_column_index: int (보통 0 = 이현)
+- column_headers: list[string]  # 첫 항목은 label 컬럼명, 그 뒤 비교 대상 N개
 - rows: list[{label: string, values: list[string]}]
 - footnote: string (옵션)
 
 ## Style
-- 카드 배경: neutral.50 또는 brand.primary_soft
-- 제목: h1 52px, top-center
-- 컬럼 헤더: body_large 34px, semibold
-  - highlight_column: brand.primary 텍스트 + brand.primary_soft 배경
-  - 다른 컬럼: neutral.500 텍스트
-- row label: body 30px, neutral.700, 좌측
-- row values: body_sm 28px
-  - highlight_column: brand.primary 텍스트, semibold
-  - 다른 컬럼: neutral.700, regular
+- 카드 배경 white, 표 외곽 1px neutral.300 보더.
+- 헤더: neutral.200 배경 + neutral.800 bold (본문 명확 구분).
+- 비교 컬럼 사이 세로 1px 보더 (파티션).
+- label 컬럼: neutral.50 옅은 배경, 좌측정렬, 36px.
+- 본문 셀: 모든 비교 컬럼 동등 (neutral.800 regular 40px).
 
-## Reference images
-- reference_library/comparison_table/*.png
-
-## Quality criteria
-- [ ] highlight_column 시각적 구분 명확
-- [ ] 본문 명시 텍스트만 사용
-- [ ] 모든 셀 최소 28px
-- [ ] 비교 광고 표현 없음 (변호사법 §23) — 다른 법무법인 명시 X
+상세: skills/image_types/comparison_table.md
 ```
 
-### 7.5 Phase 2 카드: key_points_card
+### 7.5 Phase 2 카드: key_points_card (v1.4 단일 variant)
+
+본문 "핵심 N가지", "준비 서류", "주의사항 5가지" 등 동등한 핵심 정리 패턴.
 
 ```markdown
 # key_points_card
 
-## When to use
-본문에 "핵심 3가지", "준비 서류", "체크리스트", "요약" 패턴.
-
-## Generation method
-Template (HTML + Playwright)
-
-## Card size (v1.2)
-default — width 1200px 고정, height auto. 항목 3-5개 기준 ~600~900px 범위.
+## Variants (v1.4 — 단일화)
+v1.0의 numbered/checked/bulleted 3종 → 단일 numbered로 통일.
+이유: (1) checked는 accent.success 색이 brand 외 컬러 추가 → 토스피드 단색 강조 톤 위반.
+(2) bulleted는 numbered와 시각 차별성 약함.
 
 ## Variables
 - title: string
-- variant: numbered | checked | bulleted
-- items: list[{label: string, description: string?}]  (3-5개)
+- items: list[{label: string, description: string?}]  # 3-5개
+- footnote: string (옵션)
 
 ## Style
-- 카드 배경: white 또는 neutral.50
-- 제목: h1 52px, semibold, neutral.800
-- items 사이 간격: spacing.xl 32px
+- marker: 64px 원, brand.primary_soft 배경 + brand.primary 32px bold 숫자.
+- timeline marker와 시각 일관 (같은 크기, 다른 marker 콘텐츠).
+- label 42px bold + description 40px regular. items 사이 gap sp-xl(40).
+- 단계 line 없음 (timeline과 차별 — item들은 동등/독립).
 
-### variant별
-- numbered: 큰 숫자 (h2 38px, brand.primary, bold) + label
-- checked: ✓ 아이콘 (accent.success 24px) + label
-- bulleted: • (neutral.500) + label
-
-- item label: body_large 34px, semibold, neutral.800
-- item description: body_sm 28px, neutral.600
-
-## Quality criteria
-- [ ] 항목 3-5개
-- [ ] 모든 텍스트 최소 28px
-- [ ] variant 일관성
-- [ ] 변호사법 §23 금지 표현 없음
+상세: skills/image_types/key_points_card.md
 ```
 
-### 7.6 P1+ 카드들 (Phase 3 이후)
+### 7.6 Phase 2 카드: timeline (v1.4 신설)
+
+법률 절차/소송 진행 흐름 등 순차 단계 시각화. **plan 외 신설 카드** — 운영 요구.
+
+```markdown
+# timeline
+
+## When to use
+이혼 소송 절차, 상속 분쟁 흐름, 형사 절차 등 **4-6 순차 단계**.
+단순 enumeration(3가지)은 key_points_card. 동등 비교는 comparison_table.
+
+## Variables
+- title: string
+- steps: list[{label, description?, duration?, icon?}]  # 3-7개
+  - icon: Lucide icon name (file-text/gavel/scale/handshake/mail/clock 등)
+- footnote: string (옵션)
+
+## Style
+- marker: 64px 원, brand.primary_soft + brand.primary 아이콘 stroke (30px).
+- 단계 사이 line: 2px neutral.300 (회색 — brand 색 안 씀).
+- duration: neutral.500 caption (강조 X — 토스피드 메타 톤).
+- label 42px bold, description 40px regular.
+- Lucide CDN: unpkg.com/lucide@latest. §19.4 wait_for_function 검증 확장.
+
+상세: skills/image_types/timeline.md
+```
+
+### 7.7 P1+ 카드들 (Phase 3 이후)
 
 각 카드 정의는 Phase 3 진입 시점에 정교화. P1+ 카드 라인업:
 
@@ -804,7 +803,7 @@ default — width 1200px 고정, height auto. 항목 3-5개 기준 ~600~900px �
 
 **제외**: `lawyer_profile` (운영 결정으로 설계에서 제거)
 
-### 7.7 P2 카드 (Phase 4 이후 검토)
+### 7.8 P2 카드 (Phase 4 이후 검토)
 
 - `kakao_dialogue`: 카톡 대화 (AI)
 - `app_ui_mockup`: 앱 UI mockup (AI, use case 좁음)
@@ -1580,10 +1579,12 @@ jobs:
 - [ ] 19.5 review_input 실패도 로그 1행
 - [ ] 19.6 슬롯 0개 로그 1행 + `타입=없음` 옵션 추가
 
-### 20.3 카드 추가 (Phase 2 스코프)
-- [ ] `comparison_table` (§7.4) — 이현 vs 경쟁사 비교광고 §23 위반 검증 강화
-- [ ] `key_points_card` (§7.5)
-- [ ] chart sub_type `bar` / `donut` / `pie` (각 sub-type 추가 후 사용자 톤 게이트)
+### 20.3 카드 추가 (Phase 2 스코프) — v1.4 완료
+- [x] `comparison_table` (§7.4) — v1.4 §23 안전 재설계 (highlight 제거, 모든 컬럼 동등)
+- [x] `key_points_card` (§7.5) — v1.4 단일 variant (numbered)
+- [x] `timeline` (§7.6) — **신설** (plan 외 카드, 법률 절차 시각화 요구)
+- [x] chart sub_type `bar` — 카테고리 비교 (지역별 건수 등)
+- [x] chart sub_type `donut` / `pie` — 분포/구성비, monochromatic palette + '기타' neutral 자동 처리
 
 ### 20.4 image_review 단계
 - [ ] vision OCR로 이미지 텍스트 추출 → §23 키워드 재검사
@@ -1598,6 +1599,32 @@ jobs:
 ---
 
 ## Changelog
+
+- **v1.4** (2026-05-11): Phase 2 인프라 (§20.1) + 운영 가드 (§19.1) + 카드 라인업 5종 완성
+  - **§20.1 인프라 신설 완료**:
+    - `tools/limits.py` — 비용/타임아웃/한계 상수 18개 단일 source. `Final` 타입.
+    - `tools/budget.py` — `RunBudget` mutable 상태 (run-level 누적 비용 추적).
+    - `tools/llm/models.py` — `DEFAULT_MODEL` + `CLAUDE_EXE` 분리 (LLM 도메인 전용).
+    - `tools/notion/_retry.py` — `notion_call` async tenacity wrapper (429/5xx 지수 백오프, 5회).
+      - 적용 7개 site: `databases.query`/`data_sources.query`/`blocks.children.list`/`blocks.retrieve`/`pages.create`/`pages.update`/`file_uploads.create`.
+      - 제외 2개 (의도): `file_uploads.send` (multipart 부분 재업로드 위험), `blocks.children.append` (idempotent X — 중복 삽입 위험).
+    - `tools/compliance/keywords.py` — 변호사법 §23 키워드 regex master (4 카테고리). `review.py` 1차 pass로 위반 발견 시 LLM 호출 X, 슬롯당 $0.30 절약.
+    - `tenacity>=9.0.0,<11.0.0` 의존성 추가.
+    - 단위 테스트 38건 신설 (test_budget / test_compliance_keywords / test_notion_retry).
+  - **§15.2 orchestrator main + process_database 구현**: cron 진입점. 블로그/웹 DB 순차 처리, RunBudget(cap $3.00) 추적, 페이지 사이 0.5s sleep, page-level try/except.
+  - **§19.1 멱등성 가드**: `get_logged_page_ids(log_db_id)`로 로그 DB 최근 100건 page_id set 조회 → process_database가 batch 시작 시 이미 처리된 페이지 skip.
+  - **e2e 회귀 검증 (1건)**: `35d43f95...` 페이지 2슬롯/$0.5623/2 통과 — migration이 운영 가드 깬 데 없음.
+  - **§20.3 카드 5종 완성** (Phase 2 스코프):
+    - `comparison_table` (v1.4 §23 안전 재설계): highlight_column_index 제거, 모든 비교 컬럼 동등 표시. "한 컬럼 강조 = 광고성 신호" 위험 차단.
+    - `key_points_card` (v1.4 단일 variant): plan v1.0 numbered/checked/bulleted 3종 → numbered만. checked의 accent.success 색이 brand 외 컬러 추가 → 토스피드 단색 강조 톤 위반 회피.
+    - `timeline` (신설): 법률 절차 시각화. Lucide CDN + brand.primary_soft marker. plan 외 운영 요구로 §7.6 신설.
+    - chart sub_type `bar`: 카테고리 비교 (시계열 외 절대값 비교).
+    - chart sub_type `donut` / `pie`: 분포/구성비. `chart-mono-1~5` + `chart-mono-other` (neutral) monochromatic palette. '기타'/'그 외' 카테고리는 자동으로 brand 톤 X → neutral 적용 (의미 신호).
+  - **`_base.css` 토큰 추가**: `--chart-mono-1~5` (brand wine-magenta dark→light), `--chart-mono-other` (`#a1a1aa`).
+  - **`template_render.py` `wait_for_function` 확장** (§19.4): 템플릿별 외부 라이브러리 로드 검증. chart 계열 → `window.Chart`, timeline → `window.lucide && document.body.dataset.iconsReady`.
+  - **skills 마크다운 §23 위임** (v1.4): `skills/meta/prompt_review.md` + `skills/style/ehyun_visual_guide.md`의 §23 키워드 표 → "키워드 master는 `tools/compliance/keywords.py`. 본 마크다운은 reasoning 가이드만 담당" 위임 문구로 정리. drift 방지.
+  - **`skills/meta/slot_selection.md` 룰 확장**: 5 카드 타입 (simple_table/chart line·bar·donut·pie/comparison_table/key_points_card/timeline) 선택 우선순위 명시.
+  - **디자이너 critique 결과 적용**: timeline marker 80px brand.primary 채움 → 64px brand.primary_soft + brand.primary 아이콘 stroke. 토스피드 톤 (강조 색은 점적으로) 회복.
 
 - **v1.3** (2026-05-11): 슬롯 선택 철학 전환 + 사실/라벨링 룰 분리
   - **슬롯 선택 사상 변경**: "본문에 정리된 데이터를 카드화" → "본문에 줄글로 풀려있는 구조를 발굴해 시각화" (§8.1 slot_selection)
@@ -1672,6 +1699,6 @@ jobs:
 
 ---
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Maintainer**: 수연 / 마케팅팀
-**Status**: Phase 1 진행 중 (v1.3 = 슬롯 선택 철학 전환). Phase 2 진입은 §20 체크리스트 충족 후.
+**Status**: Phase 2 진행 중 (v1.4 = 인프라 + 멱등성 + 카드 5종 완성). cron 활성화 (§20.1 마지막 항목 `.github/workflows/cron.yml`) + §20.4 image_review + §20.5 비용 최적화 남음.

@@ -18,15 +18,17 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from tools.limits import (
+    MAX_USER_PROMPT_CHARS,
+    QUERY_JSON_DEFAULT_BUDGET_USD,
+    QUERY_JSON_TIMEOUT_S,
+)
+from tools.llm.models import CLAUDE_EXE, DEFAULT_MODEL
+
 ROOT = Path(__file__).resolve().parents[2]
 SKILLS = ROOT / "skills"
-CLAUDE_EXE = ROOT / ".venv" / "Lib" / "site-packages" / "claude_agent_sdk" / "_bundled" / "claude.exe"
 
-DEFAULT_MODEL = "claude-sonnet-4-6"
 JSON_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```", re.DOTALL)
-
-# CLI subprocess의 user prompt argv 길이 한계 — Windows ~32K 한계 + 안전마진.
-MAX_USER_PROMPT_CHARS = 20_000
 
 
 def compact_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -78,8 +80,8 @@ async def query_json(
     user_prompt: str,
     system_prompt: str,
     *,
-    max_budget_usd: float = 0.30,
-    timeout_s: int = 360,    # 큰 본문 + 다중 슬롯 JSON 응답에 LLM 1~3분 소요. 여유 두고 6분.
+    max_budget_usd: float = QUERY_JSON_DEFAULT_BUDGET_USD,
+    timeout_s: int = QUERY_JSON_TIMEOUT_S,
 ) -> tuple[Any, float]:
     """Claude CLI에 prompt 보내고 JSON 응답 + 비용을 (parsed, cost_usd) 튜플로 반환.
 

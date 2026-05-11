@@ -1,0 +1,148 @@
+<!doctype html>
+<!--
+  chart_bar.html — Phase 2
+  단일 계열 vertical bar chart. brand.primary로 막대, 모든 막대 위 데이터 라벨.
+  chart_line.html과 동일 인터페이스 (Jinja variables) + 카드/플러그인 구조 공유.
+
+  Variables (Jinja2): chart_line.html 참고 — labels/values/point_labels/sub_labels/y_unit/source/y_min/y_max.
+
+  Style 차이:
+    - 라인 대신 막대: borderRadius 8 (상단 둥근 모서리), barPercentage 0.6 (시각 여백).
+    - 포인트 라벨 위치: 막대 상단 기준 -18px (line의 포인트 위와 동일 톤).
+    - 그 외(폰트/축/y_unit/footnote) chart_line과 시각 일관.
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="_base.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <style>
+    .card {
+      background: var(--neutral-100);
+      gap: var(--sp-lg);
+    }
+    .chart-y-unit {
+      font-size: var(--font-caption);
+      color: var(--neutral-500);
+      font-weight: var(--fw-regular);
+      margin-bottom: calc(-1 * var(--sp-md));
+    }
+    .chart-wrap {
+      flex: 1;
+      position: relative;
+      min-height: 0;
+    }
+    .footnote {
+      /* v1.4: footnote 통일 — 32px caption + neutral-500 (7개 카드 공통) */
+      font-size: var(--font-caption);
+      color: var(--neutral-500);
+      line-height: var(--lh-snug);
+    }
+  </style>
+</head>
+<body>
+  <div class="card card--chart">
+    <h2 class="card__title">{{ title }}</h2>
+
+    {% if y_unit %}
+      <p class="chart-y-unit">{{ y_unit }}</p>
+    {% endif %}
+
+    <div class="chart-wrap">
+      <canvas id="chart"></canvas>
+    </div>
+
+    {% if source %}
+      <p class="footnote">{{ source }}</p>
+    {% endif %}
+  </div>
+
+  <script>
+    const LABELS       = {{ labels       | tojson }};
+    const SUB_LABELS   = {{ sub_labels   | tojson if sub_labels else 'null' }};
+    const VALUES       = {{ values       | tojson }};
+    const POINT_LABELS = {{ point_labels | tojson }};
+    const Y_MIN        = {{ y_min        | tojson if y_min is not none else 'null' }};
+    const Y_MAX        = {{ y_max        | tojson if y_max is not none else 'null' }};
+
+    const css = getComputedStyle(document.documentElement);
+    const COLOR_PRIMARY  = css.getPropertyValue('--brand-primary').trim();
+    const COLOR_AXIS     = css.getPropertyValue('--neutral-500').trim();
+    const COLOR_GRID     = css.getPropertyValue('--neutral-200').trim();
+    const COLOR_LABEL    = css.getPropertyValue('--neutral-900').trim();
+    const FONT_FAMILY    = css.getPropertyValue('--font-family').trim();
+
+    const xLabels = SUB_LABELS
+      ? LABELS.map((l, i) => [l, SUB_LABELS[i]])
+      : LABELS;
+
+    // 막대 위 데이터 라벨 — bar 상단 (meta.y) 기준 -18px.
+    // line의 (x, y).getPixelForValue 대신 meta로 막대 픽셀 좌표 직접 사용.
+    const datalabelsPlugin = {
+      id: 'pointLabels',
+      afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        const meta = chart.getDatasetMeta(0);
+        ctx.save();
+        ctx.font = `700 32px ${FONT_FAMILY}`;
+        ctx.fontFeatureSettings = '"tnum"';
+        ctx.letterSpacing = '-0.01em';
+        ctx.fillStyle = COLOR_LABEL;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        meta.data.forEach((bar, i) => {
+          ctx.fillText(POINT_LABELS[i], bar.x, bar.y - 18);
+        });
+        ctx.restore();
+      },
+    };
+
+    new Chart(document.getElementById('chart'), {
+      type: 'bar',
+      data: {
+        labels: xLabels,
+        datasets: [{
+          data: VALUES,
+          backgroundColor: COLOR_PRIMARY,
+          borderRadius: 8,           // 상단 둥근 모서리
+          borderSkipped: false,      // 하단도 radius 적용 X (시각 안정)
+          barPercentage: 0.6,        // 카테고리 안 막대 폭 (60% — 여백 확보)
+          categoryPercentage: 0.85,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        layout: { padding: { top: 80, right: 16, bottom: 8, left: 16 } },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: {
+            grid: { display: false, drawBorder: false },
+            border: { display: false },
+            ticks: {
+              color: COLOR_AXIS,
+              font: { family: FONT_FAMILY, size: 28, weight: '400' },
+              padding: 12,
+            },
+          },
+          y: {
+            beginAtZero: true,         // bar는 0 baseline이 정직 (line과 다른 점)
+            min: Y_MIN ?? undefined,
+            max: Y_MAX ?? undefined,
+            grid: { color: COLOR_GRID, drawTicks: false },
+            border: { display: false },
+            ticks: {
+              color: COLOR_AXIS,
+              font: { family: FONT_FAMILY, size: 28, weight: '400' },
+              padding: 20,
+              maxTicksLimit: 6,
+            },
+          },
+        },
+      },
+      plugins: [datalabelsPlugin],
+    });
+  </script>
+</body>
+</html>

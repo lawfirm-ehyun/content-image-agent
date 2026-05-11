@@ -14,6 +14,8 @@ from typing import Any
 from jinja2 import Environment, FileSystemLoader, StrictUndefined, select_autoescape
 from playwright.async_api import async_playwright
 
+from tools.limits import PLAYWRIGHT_FONT_TIMEOUT_MS, PLAYWRIGHT_PAINT_BUFFER_MS
+
 ROOT = Path(__file__).resolve().parents[2]
 TEMPLATES_DIR = ROOT / "templates"
 
@@ -67,14 +69,16 @@ async def render_template(
     tmp.close()
     tmp_path = Path(tmp.name)
 
-    # §19.4 — Chart.js CDN / Pretendard 로드 실패 시 silent corruption 방지.
-    # chart 템플릿은 `window.Chart` + 폰트 check, 그 외 템플릿은 폰트 check만.
-    # 실패하면 빈 캔버스(>1KB 통과)나 fallback sans-serif 캡처라 사후 검증으로 못 잡음.
-    is_chart = template_name.startswith("chart")
-    if is_chart:
-        wait_expr = "window.Chart != null && document.fonts.check('700 30px Pretendard')"
-    else:
-        wait_expr = "document.fonts.check('700 30px Pretendard')"
+    # §19.4 — 외부 라이브러리 (Chart.js / Lucide) + Pretendard 폰트 로드 실패 시 silent
+    # corruption 방지. 실패하면 빈 캔버스(>1KB 통과)나 fallback sans-serif 캡처라
+    # 사후 검증으로 못 잡음.
+    checks = ["document.fonts.check('700 30px Pretendard')"]
+    if template_name.startswith("chart"):
+        checks.append("window.Chart != null")
+    if template_name == "timeline":
+        # lucide.createIcons() 완료 마커까지 함께 확인 — SVG 변환 전 캡처 방지.
+        checks.append("window.lucide != null && document.body.dataset.iconsReady === 'true'")
+    wait_expr = " && ".join(checks)
 
     try:
         async with async_playwright() as p:
@@ -85,9 +89,9 @@ async def render_template(
             )
             await page.goto(tmp_path.as_uri())
             # §19.4 — Chart.js + Pretendard 둘 다 ready인지 명시적 검증 (timeout 5s).
-            await page.wait_for_function(wait_expr, timeout=5000)
+            await page.wait_for_function(wait_expr, timeout=PLAYWRIGHT_FONT_TIMEOUT_MS)
             # Chart.js animation은 템플릿에서 off지만, 첫 페인트 안정화 위해 짧게 대기
-            await page.wait_for_timeout(200)
+            await page.wait_for_timeout(PLAYWRIGHT_PAINT_BUFFER_MS)
             await page.locator(".card").screenshot(path=str(out_path))
             await browser.close()
     finally:

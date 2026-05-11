@@ -44,6 +44,16 @@
   --chart-tertiary: #a1a1aa;
   --chart-accent-warm: #d97706;
 
+  /* chart mono palette — donut/pie 분포 시각화용. brand wine-magenta 기반 monochromatic.
+   * 큰 비중 = 진한 톤 정렬 권장 (mono-1이 가장 진하고, 옅을수록 작은 slice).
+   * '기타' 카테고리는 mono-other(neutral)로 — brand 톤 외 시각 신호. */
+  --chart-mono-1: #7d1239;
+  --chart-mono-2: #a91c51;
+  --chart-mono-3: #c2456f;
+  --chart-mono-4: #d56e8e;
+  --chart-mono-5: #e498ad;
+  --chart-mono-other: #a1a1aa;
+
   /* neutral (Tailwind Zinc) */
   --neutral-900: #18181b;
   --neutral-800: #27272a;

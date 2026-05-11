@@ -1,0 +1,112 @@
+<!doctype html>
+<!--
+  comparison_table.html — Phase 2 (plan §7.4, v1.4 §23 안전 재설계)
+
+  설계 원칙:
+    "비교 = 정보 제공"이 1순위. 한 컬럼을 시각적으로 띄우면 광고성 신호로 읽혀 §23 위반 경계.
+    → highlight_column_index 제거. 모든 비교 컬럼 동등 표시.
+    → 구조적 명료성(외곽 보더 + 세로 보더 + 헤더 톤 차별화)로 비교 가독성 확보.
+
+  Variables (Jinja2):
+    title          : str | None    — h2, top-left.
+    column_headers : list[str]     — 첫 항목은 label 컬럼명 (보통 "항목"/"구분"), 그 뒤 비교 대상 N개.
+    rows           : list[{label, values}] — values 길이 = column_headers 길이 - 1.
+    footnote       : str | None    — 출처/주석.
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="_base.css" />
+  <style>
+    .card { gap: var(--sp-xl); }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      table-layout: fixed;
+      border: 1px solid var(--neutral-300);    /* v1.4: 외곽 보더 — 데이터 영역 시각 단위 명확화 */
+    }
+
+    .table thead th {
+      background: var(--neutral-200);          /* v1.4: 100→200, 본문과 톤 차이 ↑ */
+      color: var(--neutral-800);               /* v1.4: 500→800, bold와 함께 헤더 인지 강화 */
+      font-size: var(--font-body);             /* 42px */
+      font-weight: var(--fw-bold);             /* v1.4: medium→bold */
+      padding: var(--sp-lg) var(--sp-md);      /* v1.4: sp-xl→sp-lg (행 간격 축소) */
+      text-align: center;
+      vertical-align: middle;
+      border-bottom: 1px solid var(--neutral-300);
+      border-right: 1px solid var(--neutral-300);  /* v1.4: 세로 보더 — 비교 컬럼 파티션 */
+      line-height: var(--lh-snug);
+      word-break: keep-all;
+    }
+    .table thead th:last-child { border-right: none; }
+
+    .table tbody td {
+      background: var(--neutral-0);
+      color: var(--neutral-800);
+      font-size: var(--font-body-sm);          /* 40px */
+      font-weight: var(--fw-regular);
+      padding: var(--sp-lg) var(--sp-md);      /* v1.4: sp-xl→sp-lg */
+      text-align: center;
+      vertical-align: middle;
+      border-bottom: 1px solid var(--neutral-200);
+      border-right: 1px solid var(--neutral-200);  /* v1.4: 세로 보더 (헤더보다 옅게) */
+      line-height: var(--lh-normal);
+    }
+    .table tbody td:last-child { border-right: none; }
+    .table tbody tr:last-child td { border-bottom: none; }
+
+    /* label 컬럼 (1열) — 좌측정렬 + 옅은 회색 배경 + 작은 폰트로 키 컬럼 톤.
+     * v1.4: 폭 28%→30%, 폰트 40→36, 배경 neutral.100→neutral.50 (헤더와 톤 차별화). */
+    .table thead th:first-child,
+    .table tbody td:first-child {
+      width: 30%;
+      text-align: left;
+      padding-left: var(--sp-lg);
+    }
+    .table tbody td:first-child {
+      background: var(--neutral-50);
+      color: var(--neutral-600);
+      font-size: 36px;                          /* 토큰 외 직접 명시 — 7자 한글 라벨 한 줄 수용 */
+    }
+
+    .footnote {
+      font-size: var(--font-caption);           /* v1.4: 20→32, 모바일 30% 축소 ~10px 가독 */
+      color: var(--neutral-500);
+      font-weight: var(--fw-regular);
+      margin-top: var(--sp-lg);
+      line-height: var(--lh-snug);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    {% if title %}
+      <h2 class="card__title">{{ title }}</h2>
+    {% endif %}
+
+    <table class="table">
+      <thead>
+        <tr>
+          {% for h in column_headers %}<th>{{ h }}</th>{% endfor %}
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in rows %}
+          <tr>
+            <td>{{ row['label'] }}</td>
+            {% for val in row['values'] %}
+              <td>{{ val }}</td>
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {% if footnote %}
+      <p class="footnote">{{ footnote }}</p>
+    {% endif %}
+  </div>
+</body>
+</html>

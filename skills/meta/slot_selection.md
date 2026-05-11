@@ -18,9 +18,20 @@
 
 본문에 다음 패턴이 줄글로 있으면 카드 후보:
 
-- **N가지 enumeration** ("첫째/둘째/셋째", "4가지 핵심", "세 단계", "다음 세 가지") → `simple_table`
-- **비교 구조** ("A vs B", "차이점", "전과 후") → `simple_table`
-- **절차/순서** ("1단계 → 2단계 → 3단계", 시간순 행동) → `simple_table`
+- **N가지 enumeration — 핵심 정리 / 체크리스트 / 주의사항** ("핵심 3가지", "주의사항 5가지", "준비 서류") → `key_points_card` ← Phase 2 활성
+  - extracted_data: `title`, `items: [{label, description?}]`, `footnote?` (3-5개)
+  - description은 옵션 — label만으로 충분하면 description 생략 가능.
+- **N가지 enumeration — 표 형식 데이터 (2-3 컬럼)** ("권리/내용", "조건/결과") → `simple_table`
+- **비교 구조 (2-3 옵션 × 항목별 차이)** ("협의 vs 재판 이혼", "일반 vs 간이 절차") → `comparison_table` ← Phase 2 활성
+  - **§23 경계**: 다른 법무법인과 비교 X. 비교 대상은 법적 절차/유형/조건 등 추상 개념이어야 함.
+  - 모든 비교 컬럼 시각 동등 (highlight 없음 — v1.4 §23 안전 재설계).
+  - extracted_data: `title`, `column_headers` (label컬럼 포함), `rows: [{label, values}]`, `footnote?`
+- **단순 차이 비교 (한 축만)** ("전과 후", "X와 Y") → `simple_table` (3열 비교 형식)
+- **법률 절차/소송 흐름 (4-6 단계)** ("소장 접수 → 답변서 → 변론 → 조정 → 판결") → `timeline` ← Phase 2 활성
+  - extracted_data: `title`, `steps: [{label, description?, duration?, icon?}]`, `footnote?`
+  - `icon`은 Lucide 이름 (`file-text`, `gavel`, `scale`, `handshake`, `mail`, `clock`, `check-circle` 등)
+  - 단순 enumeration (3가지)은 simple_table 우선. 순차 단계가 명확할 때만 timeline.
+- **절차/순서 (단순 3-4 항목, 시간/소요 정보 없음)** → `simple_table`
 - **조건→결과 매핑** ("~한 경우에는", "다음 요건을 갖추면 ~한 권리") → `simple_table`
 - **시계열 추이** (연도별/시점별 숫자 변화, 2개 이상 포인트) → `chart` sub_type=`line` ← **Phase 1 활성**
   - **엄격 조건**: x축이 시점(연도/월/분기), y축이 숫자 추이. 절차/단계/분류/카테고리 비교는 chart 절대 X — simple_table로.
@@ -33,6 +44,12 @@
     - `y_unit` (str, 옵션): "(건)" "(%)" 등
     - `source` (str, 옵션): 본문 출처 그대로
   - **values 못 채우면 chart 슬롯 결정 X.** 본문에 시계열 숫자 명시 안 됐으면 simple_table 또는 슬롯 X.
+- **카테고리 비교 (지역별/유형별 절대값)** ("지역별 건수", "사건 유형별 처리") → `chart` sub_type=`bar`
+  - 데이터 shape는 line과 동일 (title, labels, values, point_labels). x축이 카테고리(순서 의미 약함).
+- **분포/구성비 (전체 합 = 100%)** ("사건 유형별 비율", "연령대별 분포") → `chart` sub_type=`donut` 또는 `pie`
+  - extracted_data: `title`, `labels`, `values` (음수/합 0 X), `point_labels?`, `source?`. 2-6 slice.
+  - 카테고리 7개+면 작은 비중을 '기타'로 합산하거나 슬롯 분할.
+  - donut(중앙 hole, 현대 톤) 기본 권장 / pie(전통)는 비율 강조 시.
 
 **chart 슬롯 변환 예시 (multi-column 시계열 표 → single series chart)**:
 ```
@@ -82,7 +99,9 @@ extracted_data:
 - 50자 미만 단순 정의 한 문장
 - (`chart` line) 데이터 포인트 1개 — Phase 3 `stat_highlight` 폴백 예정
 
-> 다른 카드 타입 (카테고리 비교 / 분포 / 이현 vs 경쟁사 / 핵심 N가지 카드 / 단일 숫자 강조 / 판례 인용)은 **Phase 1엔 슬롯 결정 X** — 카드 미구현. Phase 2/3에서 점진 활성화.
+> 다른 카드 타입 (분포 / 핵심 N가지 카드 / 단일 숫자 강조 / 판례 인용)은 **Phase 2 후속 / Phase 3** — 카드 미구현. 점진 활성화.
+> chart sub_type `bar`는 카테고리 비교 (지역별/유형별 숫자) 데이터에 활성.
+> `comparison_table`은 옵션 A vs B 항목별 비교 활성 (§23 위반 차단을 위해 다른 법무법인 명시는 review의 1차 regex pass가 자동 차단).
 
 ## 위치 결정
 

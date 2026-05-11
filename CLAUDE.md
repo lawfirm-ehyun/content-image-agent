@@ -11,10 +11,10 @@
 1. **사실 정확성** — 본문에 없는 사실/숫자/출처/주체 X. 추측·환각·가짜 출처 X.
    - **숫자/values/labels/point_labels/source (사실 그 자체)**: 1자도 변경 X. 본문 그대로.
    - **title/headers/cells (라벨링·재표현)**: 본문 사실 안에서 직관 합성 OK. 본문에 없는 사실 삽입은 금지.
-2. **변호사법 §23** — 절대성/마케팅 과장/시간 압박/비교 광고 표현 검출 시 슬롯 폐기. 상세는 `skills/style/ehyun_visual_guide.md`. 키워드 코드 상수화는 `tools/compliance/keywords.py` (Phase 2 진입 전 신설).
-3. **모바일 가독성 40px+** (v1.3) — 카드 본문 텍스트 최소 40px (1200px 캔버스 기준). 1200px가 노션 모바일에서 30% 축소되어 표시 ~12px 보장. 출처/메타만 26px까지. plan §13 D안 참조.
+2. **변호사법 §23** — 절대성/마케팅 과장/시간 압박/비교 광고 표현 검출 시 슬롯 폐기. 상세는 `skills/style/ehyun_visual_guide.md`. **키워드 master는 `tools/compliance/keywords.py`** (v1.4 완료 — `tools/llm/review.py`의 1차 regex pass가 LLM 호출 전 자동 검사).
+3. **모바일 가독성 40px+** (v1.3 / v1.4 통일) — 카드 본문 텍스트 최소 40px (1200px 캔버스 기준). 1200px가 노션 모바일에서 30% 축소되어 표시 ~12px 보장. **출처/메타(footnote)는 모두 32px caption + neutral-500 통일** (v1.4 — 26px는 모바일 ~8px 가독 한계). plan §13 D안 참조.
 4. **Phase 점프 금지** — 게이트 통과 못한 단계 작업 X.
-5. **MVP 사이즈** — Phase 1은 카드 2종(`simple_table` + `chart` sub_type=`line`)만.
+5. **카드 라인업** (Phase 1 → Phase 2 v1.4) — Phase 1 MVP 카드 2종(`simple_table` + `chart line`)에서 Phase 2 v1.4 7종으로 확장: `simple_table`, `chart` (line/bar/donut/pie), `comparison_table`, `timeline`, `key_points_card`. Phase 3 추가 예정: `stat_highlight`, `document_excerpt`.
 6. **에러 만나면 우회 X — 근본 원인 진단 → 기능 살리며 해결.**
 7. **drift 처리 룰** — 코드/스킬과 plan(SOT) 간 불일치 발견 시 **plan을 먼저 갱신**한 뒤 코드 동기화. CLAUDE.md는 압축 룰, plan(`ehyun-image-agent-plan_1.md`)은 사실 정의.
 
@@ -74,8 +74,9 @@ Python 3.12 / uv / Playwright(Chromium-headless-shell) / Chart.js CDN / Pretenda
 - §19.8 본문 길이 압축 fallback (`_compress_for_analyze`)
 - §19.9 page-level try/except (`scripts/test_phase1.py`)
 
-**Phase 2 진입 전 필수**:
-- §19.1 멱등성 — 동일 page_id 이력 검색 후 skip
-- §19.3 rate limit backoff — `tools/notion/_retry.py`
-- §19.7 §23 키워드 코드 상수화 — `tools/compliance/keywords.py`
-- 비용 단일 source — `tools/limits.py`
+**Phase 2 진입 전 — v1.4 완료 ✅**:
+- §19.1 멱등성 — `get_logged_page_ids()` + `process_database` skip 가드
+- §19.3 rate limit backoff — `tools/notion/_retry.py`의 `notion_call` (tenacity 5회 지수 백오프, 429/5xx)
+- §19.7 §23 키워드 코드 상수화 — `tools/compliance/keywords.py` (4 카테고리 regex master)
+- 비용 단일 source — `tools/limits.py` (18개 Final 상수) + `tools/budget.py` (`RunBudget`)
+- §15.2 cron 진입점 — `orchestrator.main()` + `process_database()`

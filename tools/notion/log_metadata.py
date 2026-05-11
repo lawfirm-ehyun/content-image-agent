@@ -9,12 +9,12 @@ PROJECT_CONTEXT §5.3 스키마 + AGENT_GUIDE 절대 룰 #1 (데이터 정확성
 """
 from __future__ import annotations
 
-import asyncio
 import json
 from datetime import UTC, datetime
 from typing import Any, Literal
 
-from tools.notion import get_client, resolve_data_source_id
+from tools.notion import get_client, norm_uuid, resolve_data_source_id
+from tools.notion._retry import notion_call
 
 
 async def log_metadata(
@@ -42,25 +42,6 @@ async def log_metadata(
     attempts           : 시도 횟수 (1+).
     review_passed      : 셀프 리뷰 (image_review) 통과 여부.
     """
-    return await asyncio.to_thread(
-        _log_sync,
-        log_db_id, page_id, page_source, slot_type, slot_sub_type,
-        generation_method, input_data, cost_usd, attempts, review_passed,
-    )
-
-
-def _log_sync(
-    log_db_id: str,
-    page_id: str,
-    page_source: str,
-    slot_type: str,
-    slot_sub_type: str | None,
-    generation_method: str,
-    input_data: dict[str, Any],
-    cost_usd: float,
-    attempts: int,
-    review_passed: bool,
-) -> str:
     client = get_client()
 
     # 작업 ID — 운영팀 검색용. ISO 분 단위 + 한글 출처/타입.
@@ -99,5 +80,41 @@ def _log_sync(
     else:
         parent = {"database_id": log_db_id}
 
-    created = client.pages.create(parent=parent, properties=properties)
+    created = await notion_call(client.pages.create, parent=parent, properties=properties)
     return created["id"]
+
+
+async def get_logged_page_ids(log_db_id: str, *, limit: int = 100) -> set[str]:
+    """로그 DB 최근 N건에서 '관련 페이지' mention page_id 추출 (§19.1 멱등성).
+
+    cron이 batch 시작 시 1회 호출. 반환된 set에 page_id(정규화)가 있으면 그 페이지는
+    이미 한 번 이상 처리됨 → skip 권장. 운영자가 '이미지 작업 중' 페이지를 의도적으로
+    재처리하려면 기존 image block + 로그 row 제거 필요 (Phase 3에서 가드 강화).
+    """
+    client = get_client()
+    ds_id = resolve_data_source_id(log_db_id)
+    page_size = min(limit, 100)
+    sorts = [{"timestamp": "created_time", "direction": "descending"}]
+
+    if ds_id != log_db_id:
+        resp = await notion_call(
+            client.data_sources.query,
+            data_source_id=ds_id, sorts=sorts, page_size=page_size,
+        )
+    else:
+        resp = await notion_call(
+            client.databases.query,
+            database_id=log_db_id, sorts=sorts, page_size=page_size,
+        )
+
+    out: set[str] = set()
+    for row in resp.get("results", []):
+        props = row.get("properties", {}) or {}
+        related = (props.get("관련 페이지") or {}).get("rich_text") or []
+        for item in related:
+            if item.get("type") != "mention":
+                continue
+            page_id = ((item.get("mention") or {}).get("page") or {}).get("id")
+            if page_id:
+                out.add(norm_uuid(page_id))
+    return out

@@ -1,0 +1,165 @@
+<!doctype html>
+<!--
+  timeline.html — Phase 2 (v1.4 신설)
+  법률 절차 (이혼/소송/상속 진행 흐름 등)에 적합한 vertical timeline 카드.
+  Lucide icons CDN 활용 — stroke-based 미니멀 아이콘.
+
+  Variables (Jinja2):
+    title     : str | None    — 카드 제목.
+    steps     : list[{label, description, duration, icon}]
+                - label       : str (필수) — 단계 이름.
+                - description : str (옵션) — 한 줄 설명.
+                - duration    : str (옵션) — 소요 기간 ("1-2주" 등). label 옆 inline.
+                - icon        : str (옵션) — Lucide icon name (예: "file-text", "gavel").
+                                None이면 단계 번호 표시 (1, 2, ...).
+    footnote  : str | None.
+
+  외부 의존성: https://unpkg.com/lucide@latest (CDN). §19.4 패턴으로 wait_for_function 검증.
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="_base.css" />
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <style>
+    .card { gap: var(--sp-xl); }
+
+    .timeline {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .timeline__step {
+      display: flex;
+      gap: var(--sp-xl);
+      padding-bottom: var(--sp-2xl);
+      position: relative;
+    }
+    .timeline__step:last-child { padding-bottom: 0; }
+
+    /* marker — 64x64 원, brand.primary_soft 배경 + brand.primary 아이콘 stroke
+     * 토스피드 톤: 강조 색은 면적이 아니라 점적으로. soft 배경으로 시각 부담 ↓. */
+    .timeline__marker {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--brand-primary-soft);
+      color: var(--brand-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      position: relative;
+      z-index: 1;
+      /* 아이콘 없을 때 번호 표시용 */
+      font-size: 28px;
+      font-weight: var(--fw-bold);
+      font-feature-settings: "tnum";
+    }
+    .timeline__marker svg {
+      width: 30px;
+      height: 30px;
+      stroke-width: 2;
+    }
+
+    /* 단계 사이 연결 라인 — 회색 톤으로 차분히. brand 색 안 씀. */
+    .timeline__step:not(:last-child) .timeline__marker::after {
+      content: '';
+      position: absolute;
+      top: 100%;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 2px;
+      height: var(--sp-2xl);
+      background: var(--neutral-300);
+    }
+
+    .timeline__content {
+      flex: 1;
+      padding-top: 6px;                 /* 64px marker 중앙과 label baseline 시각 정렬 */
+    }
+
+    .timeline__head {
+      display: flex;
+      align-items: baseline;
+      flex-wrap: wrap;                  /* 좁으면 duration이 두 번째 줄로 */
+      gap: var(--sp-md);
+      margin-bottom: var(--sp-sm);
+    }
+    .timeline__label {
+      font-size: var(--font-body);      /* 42px */
+      font-weight: var(--fw-bold);
+      color: var(--neutral-900);
+      line-height: var(--lh-snug);
+    }
+    .timeline__duration {
+      font-size: var(--font-caption);   /* 32px */
+      color: var(--neutral-500);        /* 토스피드 톤: 메타 정보는 회색 */
+      font-weight: var(--fw-regular);
+      font-feature-settings: "tnum";
+    }
+    .timeline__duration::before {
+      content: '· ';
+      color: var(--neutral-300);
+      margin-right: 6px;
+    }
+
+    .timeline__description {
+      font-size: var(--font-body-sm);   /* 40px */
+      color: var(--neutral-700);
+      font-weight: var(--fw-regular);
+      line-height: var(--lh-normal);
+    }
+
+    .footnote {
+      font-size: var(--font-caption);   /* 32px — 모바일 가독성 */
+      color: var(--neutral-500);
+      font-weight: var(--fw-regular);
+      margin-top: var(--sp-lg);
+      line-height: var(--lh-snug);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    {% if title %}
+      <h2 class="card__title">{{ title }}</h2>
+    {% endif %}
+
+    <ol class="timeline">
+      {% for step in steps %}
+        <li class="timeline__step">
+          <div class="timeline__marker">
+            {% if step.icon %}
+              <i data-lucide="{{ step.icon }}"></i>
+            {% else %}
+              {{ loop.index }}
+            {% endif %}
+          </div>
+          <div class="timeline__content">
+            <div class="timeline__head">
+              <h3 class="timeline__label">{{ step['label'] }}</h3>
+              {% if step.duration %}
+                <span class="timeline__duration">{{ step.duration }}</span>
+              {% endif %}
+            </div>
+            {% if step.description %}
+              <p class="timeline__description">{{ step.description }}</p>
+            {% endif %}
+          </div>
+        </li>
+      {% endfor %}
+    </ol>
+
+    {% if footnote %}
+      <p class="footnote">{{ footnote }}</p>
+    {% endif %}
+  </div>
+
+  <script>
+    // Lucide 아이콘을 SVG로 변환. createIcons 끝나면 wait_for_function이 인지하도록 마커 세팅.
+    lucide.createIcons();
+    document.body.dataset.iconsReady = 'true';
+  </script>
+</body>
+</html>

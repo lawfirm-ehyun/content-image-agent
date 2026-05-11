@@ -17,6 +17,11 @@ class NotionConfigError(RuntimeError):
     """NOTION_TOKEN 누락 등 환경설정 문제."""
 
 
+def norm_uuid(uuid: str | None) -> str:
+    """Notion UUID는 dash 포함/미포함 모두 가능. 정규화 후 비교 (32자 lowercase hex)."""
+    return (uuid or "").replace("-", "").lower()
+
+
 @lru_cache(maxsize=1)
 def get_client() -> Client:
     """싱글톤 Client. 첫 호출 시 NOTION_TOKEN 검증."""
