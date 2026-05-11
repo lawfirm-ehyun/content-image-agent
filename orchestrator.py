@@ -40,9 +40,10 @@ from tools.render.template_render import render_template
 logger = logging.getLogger(__name__)
 
 # Phase 1 검증 단계 한정 — 안정화 후 plan §13 기준 0.30 복귀 목표.
-# 슬롯 3개 페이지: analyze ~$0.19 + (review ~$0.10 + 기타) × 3 = 합 ~$0.70 실측.
-# Phase 2에서 비용 최적화 (CLI auto-mode Haiku 보조 호출 끄기, review_input 본문 압축 등).
-PER_PAGE_CAP_USD = 1.00
+# v1.3 슬롯 룰 강화 후 실측: analyze ~$0.37 + review × 2슬롯 ~$0.30 = 합 ~$0.97/페이지.
+# 슬롯 3개 케이스 대비 cap $1.50 (analyze 0.50 + review × 3 × 0.30 = 1.40 안전 마진).
+# Phase 2에서 비용 최적화 (skill 압축, CLI auto-mode Haiku 보조 호출 끄기 등).
+PER_PAGE_CAP_USD = 1.50
 PER_SLOT_ATTEMPTS = 3
 SUPPORTED_TYPES = {"simple_table", "chart"}
 SUPPORTED_CHART_SUB_TYPES = {"line"}
@@ -79,6 +80,38 @@ def _blocks_to_text(blocks: list[dict[str, Any]]) -> str:
     return "\n".join(c["text"] for c in compact_blocks(blocks))
 
 
+async def _log_review_dispose(
+    *,
+    log_db_id: str,
+    page_id: str,
+    page_source: Literal["블로그", "웹"],
+    slot_type: str,
+    slot_sub_type: str | None,
+    issues: list[str],
+    cost_usd: float,
+) -> None:
+    """review_input 단계에서 슬롯이 폐기됐을 때 로그 DB 1행 기록 (plan v1.2 §19.5).
+
+    attempts=0 = "review_input 단계 폐기"의 운영 신호.
+    regen_policy.md "모든 시도 1행 기록" 룰을 review fail path에서도 충족시키기 위함.
+    """
+    try:
+        await log_metadata(
+            log_db_id=log_db_id,
+            page_id=page_id,
+            page_source=page_source,
+            slot_type=slot_type,
+            slot_sub_type=slot_sub_type,
+            generation_method="template",
+            input_data={"notion_block_id": None, "issues": list(issues)},
+            cost_usd=cost_usd,
+            attempts=0,
+            review_passed=False,
+        )
+    except Exception as e:
+        logger.error("log_metadata (review dispose) 실패 (계속 진행): %s", e)
+
+
 async def _render_slot(
     slot: dict[str, Any], out_png: Path,
 ) -> None:
@@ -89,6 +122,11 @@ async def _render_slot(
         sub = slot.get("sub_type")
         if sub != "line":
             raise ValueError(f"Phase 1엔 chart sub_type='line'만 지원 (받은 값: {sub!r})")
+        # 필수 필드 누락은 ChartDataError로 raise — orchestrator가 재시도 없이 즉시 폐기.
+        # LLM이 chart 슬롯 결정하고도 필드 못 채운 케이스는 재시도해도 같은 응답.
+        missing = [k for k in ("title", "labels", "values", "point_labels") if k not in data]
+        if missing:
+            raise ChartDataError(f"chart 슬롯 필수 필드 누락: {missing}")
         chart = ChartLineData(
             title=data["title"],
             labels=data["labels"],
@@ -151,9 +189,21 @@ async def _process_slot(
                 slot = {**slot, "extracted_data": review["revised_data"]}
                 logger.info("review_input 자동 수정 적용")
             else:
+                # §19.5 — review fail + 자동 수정 불가 시에도 로그 1행 기록 (attempts=0).
+                await _log_review_dispose(
+                    log_db_id=log_db_id, page_id=page_id, page_source=page_source,
+                    slot_type=stype, slot_sub_type=sub,
+                    issues=issues, cost_usd=slot_cost,
+                )
                 return SlotResult(stype, sub, False, None, issues, slot_cost, 0)
     except Exception as e:
         issues.append(f"review_input 예외: {e}")
+        # §19.5 — review_input 자체 예외도 폐기. 동일 룰 적용.
+        await _log_review_dispose(
+            log_db_id=log_db_id, page_id=page_id, page_source=page_source,
+            slot_type=stype, slot_sub_type=sub,
+            issues=issues, cost_usd=slot_cost,
+        )
         return SlotResult(stype, sub, False, None, issues, slot_cost, 0)
 
     # 렌더 + 업로드 (시도 PER_SLOT_ATTEMPTS회)
@@ -237,6 +287,27 @@ async def run_for_page(
 
     slots, analyze_cost = await analyze_content(blocks)
     logger.info("analyze_content: %d 슬롯, $%.4f", len(slots), analyze_cost)
+
+    # §19.6 — 슬롯 0개 페이지도 운영 추적용 1행 기록. 운영팀이 "왜 이미지가 안 들어갔지?"
+    # 확인 가능하게. 로그 DB '타입' select에 '없음' 옵션이 추가돼야 통과 (plan §19.6 운영 작업).
+    if not slots:
+        try:
+            await log_metadata(
+                log_db_id=log_db_id,
+                page_id=page_id,
+                page_source=page_source,
+                slot_type="없음",
+                slot_sub_type=None,
+                generation_method="template",
+                input_data={"reason": "no_slots", "blocks_count": len(blocks)},
+                cost_usd=analyze_cost,
+                attempts=0,
+                review_passed=False,
+            )
+        except Exception as e:
+            logger.error(
+                "log_metadata (empty slots) 실패 — '타입' select에 '없음' 옵션 추가 필요?: %s", e,
+            )
 
     page_cost = analyze_cost
     results: list[SlotResult] = []

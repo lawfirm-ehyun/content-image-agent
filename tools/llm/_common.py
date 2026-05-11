@@ -39,7 +39,8 @@ def compact_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     추출 분기:
       - rich_text 기반 (paragraph/heading/list/quote/callout/toggle/code 등)
       - **table_row.cells** (cells: list[list[rich_text]]) — "셀1 | 셀2 | ..." 형태
-    table 블록 자체는 빈 컨테이너라 무시 (자식 table_row가 처리).
+      - **table 블록** — v1.3: 마커 1줄로 표시 ("[표 시작: N열, 헤더행 포함]").
+        slot_selection이 "본문에 이미 표 있는 영역"을 인지하고 형식 전환 판단하기 위함.
     """
     out: list[dict[str, Any]] = []
     for b in blocks:
@@ -54,6 +55,11 @@ def compact_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
                 "".join(item.get("plain_text", "") for item in cell)
                 for cell in cells
             )
+        elif bt == "table":
+            # v1.3 — LLM에게 본문 표 존재를 알린다. 직후 따라오는 table_row들이 표 데이터.
+            width = body.get("table_width") or 0
+            has_header = body.get("has_column_header") or False
+            text = f"[표 시작: {width}열" + (", 헤더행 포함" if has_header else "") + "]"
         else:
             rt = body.get("rich_text") or []
             text = "".join(item.get("plain_text", "") for item in rt)
