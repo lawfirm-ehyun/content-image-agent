@@ -36,8 +36,9 @@ async def review_input(
         f"\n\n## {slot_type} 스킬\n" + image_type_skill
     )
 
-    # 슬롯당 1회 호출. page_text 13KB+ inject로 비용 크니 페이지 cap $0.50의 절반 가까이 허용.
-    parsed, cost = await query_json(user_prompt, system, max_budget_usd=0.20)
+    # 슬롯당 1회 호출. 실측: cache_creation 40K 토큰 들어가 두 번째 슬롯 review에서 $0.20에 정확히
+    # 닿아 error_max_budget_usd 발생 → $0.30으로 상향 (page cap $1.00 안 안전 마진).
+    parsed, cost = await query_json(user_prompt, system, max_budget_usd=0.30)
     if not isinstance(parsed, dict) or "passed" not in parsed:
         raise ValueError(f"review_input 응답 형식 예상 외: {parsed!r}")
     parsed.setdefault("issues", [])

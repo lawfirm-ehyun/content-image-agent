@@ -31,6 +31,14 @@
       background: var(--neutral-100);     /* 시드 패턴: 카드 전체 light-gray 배경 */
       gap: var(--sp-lg);
     }
+    /* y unit ("(건)" 등) — canvas 밖 HTML 요소로 분리.
+     * 이전엔 yUnitPlugin이 canvas 안에 그렸는데 y축 ticks 영역과 겹침 발생 → HTML로 분리. */
+    .chart-y-unit {
+      font-size: var(--font-caption);     /* 32px */
+      color: var(--neutral-500);
+      font-weight: var(--fw-regular);
+      margin-bottom: calc(-1 * var(--sp-md));  /* chart 가까이 붙임 */
+    }
     .chart-wrap {
       flex: 1;
       position: relative;
@@ -44,8 +52,12 @@
   </style>
 </head>
 <body>
-  <div class="card">
+  <div class="card card--chart">
     <h2 class="card__title">{{ title }}</h2>
+
+    {% if y_unit %}
+      <p class="chart-y-unit">{{ y_unit }}</p>
+    {% endif %}
 
     <div class="chart-wrap">
       <canvas id="chart"></canvas>
@@ -80,40 +92,28 @@
       : LABELS;
 
     // 모든 포인트 위에 라벨 그리는 custom plugin (chartjs-plugin-datalabels 의존성 회피)
+    // v1.3 폰트 위계 재조정: 강조 요소는 굵기/색으로 인지하므로 table 본문(40px)보다 작게.
     const datalabelsPlugin = {
       id: 'pointLabels',
       afterDatasetsDraw(chart) {
         const { ctx, data, scales: { x, y } } = chart;
         ctx.save();
-        ctx.font = `700 28px ${FONT_FAMILY}`;
+        ctx.font = `700 32px ${FONT_FAMILY}`;
+        ctx.fontFeatureSettings = '"tnum"';   // 숫자 등폭 — "44.6" / "638억" 정렬 안정
+        ctx.letterSpacing = '-0.01em';        // 한글 가독성 (Pretendard 권장 자간)
         ctx.fillStyle = COLOR_LABEL;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
         data.datasets[0].data.forEach((v, i) => {
           const px = x.getPixelForValue(i);
           const py = y.getPixelForValue(v);
-          ctx.fillText(POINT_LABELS[i], px, py - 16);  // 포인트 위 16px gap
+          ctx.fillText(POINT_LABELS[i], px, py - 18);  // 폰트 비례 gap
         });
         ctx.restore();
       },
     };
 
-    // y축 단위 캡션 ("(%)" 등)을 plot 좌상단에 그리는 plugin
-    const yUnitPlugin = {
-      id: 'yUnitCaption',
-      afterDraw(chart) {
-        if (!Y_UNIT) return;
-        const { ctx, chartArea, scales: { y } } = chart;
-        ctx.save();
-        ctx.font = `400 24px ${FONT_FAMILY}`;
-        ctx.fillStyle = COLOR_AXIS;
-        ctx.textAlign = 'left';
-        ctx.textBaseline = 'bottom';
-        // y축 라벨 영역 위쪽에 표시
-        ctx.fillText(Y_UNIT, chartArea.left - 60, y.top - 8);
-        ctx.restore();
-      },
-    };
+    // (yUnitPlugin 제거됨 — y unit은 canvas 밖 HTML 요소로 분리. ticks와 겹침 위험 해소.)
 
     new Chart(document.getElementById('chart'), {
       type: 'line',
@@ -135,15 +135,22 @@
         responsive: true,
         maintainAspectRatio: false,
         animation: false,                 // headless 렌더 = 프레임 안정화
-        layout: { padding: { top: 56, right: 32, bottom: 8, left: 8 } },
+        /* v1.3 재설계: yUnit이 canvas 밖 HTML로 분리됐으므로 left padding 원위치.
+         * top 80 (pointLabel 공간) / right 16 (offset:true와 합쳐 자연 inset) /
+         * left 16 (Chart.js가 ticks 폭 자동 계산) */
+        layout: { padding: { top: 80, right: 16, bottom: 8, left: 16 } },
         plugins: { legend: { display: false }, tooltip: { enabled: false } },
         scales: {
           x: {
+            /* offset: true — 첫/마지막 데이터 포인트를 plot 가장자리에서 안쪽으로 inset.
+             * 첫 x 라벨이 y ticks와 겹치는 문제 + 마지막 라벨 잘림 동시 해결. */
+            offset: true,
             grid: { display: false, drawBorder: false },
             border: { display: false },
             ticks: {
               color: COLOR_AXIS,
-              font: { family: FONT_FAMILY, size: 24, weight: '400' },
+              /* 보조 정보 — 본문 cell(40px)보다 작게, 32→28 (caption-) */
+              font: { family: FONT_FAMILY, size: 28, weight: '400' },
               padding: 12,
             },
           },
@@ -154,14 +161,14 @@
             border: { display: false },
             ticks: {
               color: COLOR_AXIS,
-              font: { family: FONT_FAMILY, size: 24, weight: '400' },
-              padding: 16,
+              font: { family: FONT_FAMILY, size: 28, weight: '400' },
+              padding: 20,    /* 16→20: y축 숫자가 plot 라인과 더 분리 */
               maxTicksLimit: 6,
             },
           },
         },
       },
-      plugins: [datalabelsPlugin, yUnitPlugin],
+      plugins: [datalabelsPlugin],
     });
   </script>
 </body>

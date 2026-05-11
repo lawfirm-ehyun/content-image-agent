@@ -1,4 +1,4 @@
-# 이현 블로그 이미지 에이전트 — 빌드 계획서 (v1.2)
+# 이현 블로그 이미지 에이전트 — 빌드 계획서 (v1.3)
 
 > 법무법인 이현의 블로그 + 웹 콘텐츠용 이미지를 자율 생성·배치하는 에이전트.
 > Notion 워크플로 안에서 동작하며, OpenMontage의 agent-first / pipeline-driven 패턴을 차용한다.
@@ -1599,6 +1599,44 @@ jobs:
 
 ## Changelog
 
+- **v1.3** (2026-05-11): 슬롯 선택 철학 전환 + 사실/라벨링 룰 분리
+  - **슬롯 선택 사상 변경**: "본문에 정리된 데이터를 카드화" → "본문에 줄글로 풀려있는 구조를 발굴해 시각화" (§8.1 slot_selection)
+  - **본문 table 처리 룰 신설**: 같은 형식(table→simple_table) 단순 복제만 폐기. chart로 형식 전환 또는 컬럼 재구성/일부 발췌로 가치 추가 시 OK.
+  - **절대 룰 #1 재정의**: "데이터 정확성" → "사실 정확성". 데이터 종류별 분리:
+    - **사실 그 자체** (숫자/values/labels/point_labels/source): 1자도 변경 X. 본문 그대로.
+    - **라벨링·재표현** (title/headers/cells): 본문 사실 안에서 직관 합성 OK. 본문에 없는 사실 삽입 X.
+  - **title 룰**: 본문 H2/H3과 완전 동일만 X. 부분 겹침 OK, 길이 한도 X.
+  - **cell 룰 (e2e 실측 후 추가)**: 본문 한 문장 통째 박지 말고 짧고 직관적으로 재표현. 사실은 본문 안.
+  - **시각화 후보 패턴 명시**: enumeration / 비교 / 절차 / 조건 매핑 / 시계열 5종 (§8.1).
+  - **compact_blocks에 table block 마커 추가** (`tools/llm/_common.py`): "[표 시작: N열, 헤더행 포함]" 1줄로 LLM에게 본문 표 영역 인지시킴. 형식 전환 판단 전제 조건.
+  - **CLAUDE.md 절대 룰 #1 + 슬롯 데이터 룰 갱신**: 데이터 종류별 분리로 단순화.
+  - **prompt_review.md 검증 항목 갱신**: 사실 그 자체(절대 일치) / title·headers·cells(직관 허용, 사실 일탈 X) / 본문 중복(같은 형식 복제만 폐기) 3섹션 분리. 위반 시 처리 4종.
+  - **비용 cap 상향**: analyze_content `max_budget_usd` 0.30 → 0.50 (slot_selection 스킬이 두꺼워져 실측 cache_creation 47K + output 13K로 증가). 페이지 cap `PER_PAGE_CAP_USD` 1.00 → 1.50.
+  - **모바일 가독성 D안 (폰트·spacing 1.4x + 정보 밀도 낮춤)**: 노션 모바일 30% 축소 시 본문 표시 ~12px 보장. 토큰 변경:
+    - 폰트: body-sm 28→40 / body 30→42 / h2 38→52 / caption 24→32 / small 20→26 (각 1.4x 안팎)
+    - spacing: sp-3xl 64→80 / 전체 spacing 1.25x 상향. 셀 padding sp-xl/sp-lg.
+    - card--chart min-height 700→900.
+  - **한글 가독성 토큰** (`templates/_base.css`): `word-break: keep-all` + `letter-spacing: -0.01em` + `line-height: 1.5` 전역. `.card__title`에 `text-wrap: balance`. chart point label `font-feature-settings: "tnum"`.
+  - **정보 밀도 가이드** (`slot_selection.md`): cell 한 줄 18자 안 권장. 한 카드 3-5행 권장 (6행+면 슬롯 분할). 쉼표로 두 호흡 분할.
+  - **simple_table 컬럼 수 룰**: 줄글 시각화 기준 **2컬럼 default, 3컬럼 특수(비교/분류), 4+컬럼 슬롯 X** (재구성 또는 슬롯 분할).
+  - **카드 1순위 목적 명시**: 줄글 시각화가 1순위 (`§8.1` 슬롯 결정 우선순위 4단계 — 줄글 발굴 > 본문 표→chart > 재구성 > 슬롯 X).
+  - **chart 카드 재설계 (e2e 실측 후)**: yUnit이 canvas 안에 그리던 plugin 패턴은 y축 ticks와 겹침 발생 → **yUnit을 canvas 밖 HTML 요소 `<p class="chart-y-unit">`로 분리**. `scales.x.offset: true` 활성화로 첫·마지막 데이터 포인트 plot 가장자리에서 inset → 첫 x 라벨과 y ticks 자연 분리 + 마지막 라벨 잘림 해소. `layout.padding.left` 48→16 (Chart.js가 ticks 폭 자동 계산).
+  - **chart 폰트 위계 재조정**: pointLabel 40→32, x/y ticks 32→28, y_unit 32→28. table 본문(40px)보다 작아 위계 명확.
+  - **simple_table 키 컬럼 overflow 해결**: `width: 25% + white-space: nowrap + 40px 폰트` 충돌로 6-7자 한글 라벨이 cell 밖으로 튀어나옴. **nowrap 제거 + 1열 폭 25→28% + cell 좌우 padding sp-lg→sp-md**. 가용 텍스트 폭 206→260px.
+  - **카드 outer padding 축소**: `.card` padding `sp-3xl(80)` → `sp-2xl(60)`. 콘텐츠 가용 폭 +40px, 좌우 답답함 해소.
+  - **chart 슬롯 schema 강화**: `_render_slot`에서 chart 필수 필드(`title/labels/values/point_labels`) 누락 시 `ChartDataError` raise (재시도 무의미, 즉시 폐기 = 비용 절약). slot_selection에 multi-column 시계열 표 → single series chart 변환 예시 명시.
+  - **e2e 버그 수정 2건**:
+    - `insert_image_block`이 table_row를 after anchor로 받으면 table block에 image append 불가 (Notion API 제약). table 한 단계 위로 격상해 table_parent에 append + anchor를 table block id로.
+    - `review_input` `max_budget_usd` 0.20 → 0.30 (실측 cache_creation 40K로 두 번째 슬롯 review가 cap에 정확히 닿음).
+  - **§19 Phase 1 즉시 적용 7항 코드 동기화** (이미 v1.2에 정의):
+    - 19.2 block ancestor 검증 (`insert_image_block`)
+    - 19.4 Chart.js·Pretendard `wait_for_function` (`template_render`)
+    - 19.5 review_input 폐기도 log_metadata (`orchestrator._log_review_dispose`)
+    - 19.6 슬롯 0개 fallback log (`run_for_page`)
+    - 19.8 본문 길이 압축 fallback (`analyze_content._compress_for_analyze`)
+    - 19.9 page-level try/except (`scripts/test_phase1.py`)
+    - `.card--chart` min-height 토큰 + class 적용
+
 - **v1.2** (2026-05-08): drift 제거 + edge case 정책 신설
   - **카드 사이즈 정책 확정**: width-fixed (1200px) + content-fit + 타입별 min-height 토큰. 1200×675 fixed 폐기. 차트는 canvas 480px로 시각 비율 일관성 유지. fixed-aspect는 Phase 2+ modifier (`.card--square`, `.card--vertical`).
   - **claude-agent-sdk 사용 폐기 명시**: bundled `claude.exe`만 subprocess로 직접 호출. SDK API는 우회. 모델 ID `claude-sonnet-4-6` 확정 (§1, §3, §15).
@@ -1634,6 +1672,6 @@ jobs:
 
 ---
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Maintainer**: 수연 / 마케팅팀
-**Status**: Phase 1 진행 중 (v1.2 = drift 제거 + edge case 정책 신설). Phase 2 진입은 §20 체크리스트 충족 후.
+**Status**: Phase 1 진행 중 (v1.3 = 슬롯 선택 철학 전환). Phase 2 진입은 §20 체크리스트 충족 후.

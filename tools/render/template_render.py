@@ -67,6 +67,15 @@ async def render_template(
     tmp.close()
     tmp_path = Path(tmp.name)
 
+    # §19.4 — Chart.js CDN / Pretendard 로드 실패 시 silent corruption 방지.
+    # chart 템플릿은 `window.Chart` + 폰트 check, 그 외 템플릿은 폰트 check만.
+    # 실패하면 빈 캔버스(>1KB 통과)나 fallback sans-serif 캡처라 사후 검증으로 못 잡음.
+    is_chart = template_name.startswith("chart")
+    if is_chart:
+        wait_expr = "window.Chart != null && document.fonts.check('700 30px Pretendard')"
+    else:
+        wait_expr = "document.fonts.check('700 30px Pretendard')"
+
     try:
         async with async_playwright() as p:
             browser = await p.chromium.launch()
@@ -75,8 +84,8 @@ async def render_template(
                 device_scale_factor=1,
             )
             await page.goto(tmp_path.as_uri())
-            # Pretendard @font-face 로드 대기 — 빠뜨리면 fallback 폰트로 캡처돼 시각 어긋남
-            await page.evaluate("document.fonts.ready")
+            # §19.4 — Chart.js + Pretendard 둘 다 ready인지 명시적 검증 (timeout 5s).
+            await page.wait_for_function(wait_expr, timeout=5000)
             # Chart.js animation은 템플릿에서 off지만, 첫 페인트 안정화 위해 짧게 대기
             await page.wait_for_timeout(200)
             await page.locator(".card").screenshot(path=str(out_path))

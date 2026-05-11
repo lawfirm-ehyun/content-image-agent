@@ -34,35 +34,46 @@
     .table thead th {
       background: var(--neutral-100);
       color: var(--neutral-500);
-      font-size: var(--font-body);          /* 30px */
+      font-size: var(--font-body);          /* v1.3: 42px */
       font-weight: var(--fw-medium);
-      padding: var(--sp-lg) var(--sp-md);
+      /* v1.3: 위아래 sp-xl (40), 좌우 sp-md (20) — 좌우 padding 줄여 텍스트 가용 폭 확보. */
+      padding: var(--sp-xl) var(--sp-md);
       text-align: center;
       vertical-align: middle;
       border-bottom: 1px solid var(--neutral-200);
       line-height: var(--lh-snug);
+      word-break: keep-all;                 /* 한국어 헤더 가독성 */
     }
 
     .table tbody td {
       background: var(--neutral-0);
       color: var(--neutral-800);
-      font-size: var(--font-body-sm);       /* 28px (절대 minimum) */
+      font-size: var(--font-body-sm);       /* v1.3: 40px (모바일 표시 ~12px) */
       font-weight: var(--fw-regular);
-      padding: var(--sp-lg) var(--sp-md);
+      /* 좌우 padding sp-md (20) — 키 컬럼에 긴 라벨(6-7자) 들어갈 여유 확보. */
+      padding: var(--sp-xl) var(--sp-md);
       text-align: center;
       vertical-align: middle;
       border-bottom: 1px solid var(--neutral-200);
-      line-height: var(--lh-snug);
-      word-break: keep-all;                 /* 한국어 줄바꿈 자연스럽게 */
+      /* 한국어 가독성: 셀은 행간 넉넉히 (1.5). _base의 keep-all/letter-spacing 상속됨. */
+      line-height: var(--lh-normal);
     }
 
     .table tbody tr:last-child td { border-bottom: none; }
 
-    /* 좌측 키 컬럼 — tmp_kor_05 시드 패턴 */
+    /* 좌측 키 컬럼 — tmp_kor_05 시드 패턴.
+     * v1.3: 키 라벨이 짧으면 한 줄, 길면 (6-7자 "계약갱신청구권") 두 줄 자연 줄바꿈.
+     * nowrap 제거 — 25% 폭 + 40px 폰트로 한 줄 5자 한계라 6자+ overflow 발생했음.
+     * keep-all + 띄어쓰기 기준 줄바꿈은 _base.css가 담당. */
     .table.has-key-col tbody td:first-child {
       background: var(--neutral-100);
       color: var(--neutral-500);
       font-weight: var(--fw-regular);
+    }
+    /* 1열 폭 28% — 7자 한글 라벨 한 줄 수용 (가용 텍스트 폭 ~260px) */
+    .table.has-key-col thead th:first-child,
+    .table.has-key-col tbody td:first-child {
+      width: 28%;
     }
 
     /* 헤더의 첫 컬럼도 같이 톤 매칭 (시드는 헤더 첫 컬럼이 같은 회색) */

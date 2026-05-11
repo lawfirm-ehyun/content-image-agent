@@ -60,7 +60,15 @@ async def main() -> int:
         return 2
 
     print(f"[RUN] page_id={args.page_id} source={args.source}")
-    result = await run_for_page(args.page_id, args.source, log_db_id)
+    # §19.9 — page-level try/except. stack trace 대신 사용자 친화 메시지 + exit 1.
+    # 슬롯 단위 예외는 orchestrator가 흡수해서 results에 들어옴 — 여기 도달 = 진짜 page-level 실패.
+    try:
+        result = await run_for_page(args.page_id, args.source, log_db_id)
+    except Exception as e:
+        cls = type(e).__name__
+        print(f"[FAIL] page 처리 중단 ({cls}): {e}", file=sys.stderr)
+        logging.getLogger(__name__).debug("상세 stack trace:", exc_info=True)
+        return 1
 
     print()
     print(f"=== 결과 ===")
