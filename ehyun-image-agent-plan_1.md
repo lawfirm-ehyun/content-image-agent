@@ -183,6 +183,8 @@ v1.6.4까지 `tools/llm/_common.py`가 bundled `claude.exe` subprocess 호출 (�
 
 0.2.111+에서 Opus 4.7이 풀린 것으로 보이므로 **제자리 마이그레이션 가능 시점**. 풀 리빌드 X — `orchestrator.main()` + `tools/llm/_common.py` 껍데기만 갈아끼움.
 
+> **Week 0 spike 노트 (2026-05-12, N=4 한계)**: claude-agent-sdk 0.1.77 + Sonnet 4.6 + `max_turns=1 + setting_sources=[]` 가드 하에 SDK 호출이 subprocess 대비 일관 **0.34-0.64x cost** 측정됨 (N=4, `scripts/_spike_sdk.py`). 위 "토큰 비용 3배+" 우려 frame 재측정 트리거. 다만 N 한계 + 합성 본문(`tests/fixtures/spike_sdk_baseline.json`) + cache miss 조건이므로 단정 X. Week 1-2 통합 시 실제 본문 + cache hit 포함 N≥3 재측정 예정.
+
 ### 12.2 4주 스코프
 
 | 주차 | 작업 | 결과물 |
