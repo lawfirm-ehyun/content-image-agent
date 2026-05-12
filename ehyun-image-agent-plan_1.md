@@ -1,4 +1,4 @@
-# 이현 블로그 이미지 에이전트 — Plan (v1.6.4 다이어트)
+# 이현 블로그 이미지 에이전트 — Plan (v1.7.1-plan)
 
 > 노션 콘텐츠에 자동으로 이미지 카드 박는 에이전트.
 >
@@ -17,12 +17,14 @@
 
 ## 2. 절대 룰
 
-1. **사실 정확성 #1** — 본문에 없는 사실/숫자/주체 X. 추측·환각·가짜 출처 X.
-   - **사실 그 자체** (숫자 / values / labels / point_labels / source / messages.text / excerpt): 1자도 변경 X.
-   - **라벨링·재표현** (title / headers / cells / scene / mood): 본문 사실 안에서 직관 합성 OK.
-2. **변호사법 §23** — 절대성/마케팅 과장/시간 압박/비교 광고 표현 검출 시 슬롯 폐기. 키워드 master는 `tools/compliance/keywords.py`.
-3. **모바일 가독성 40px+** — 카드 본문 텍스트 최소 40px (1200px 캔버스, 노션 모바일 30% 축소 시 ~12px 보장). 출처/메타는 32px.
-4. **AI prompt = 자연어** (v1.6.2) — 픽셀/hex/CSS 토큰 over-constraint 금지. 텍스트 사실 필드만 `exact_korean_strings`로 엄격 명시.
+전체 룰 SSOT → [CLAUDE.md](CLAUDE.md) 절대 룰 #1-#8. **룰 변경 시 CLAUDE.md를 먼저 갱신**, plan은 참조만 (drift 방지).
+
+plan 안에서 자주 참조하는 핵심 4개:
+
+1. **사실 정확성 #1** (CLAUDE.md #1) — 사실 필드(숫자/values/labels/source/messages.text/excerpt) 1자도 변경 X. 라벨링 필드(title/headers/cells/scene/mood)는 본문 안 직관 합성 OK.
+2. **변호사법 §23** (CLAUDE.md #2) — 키워드 master: `tools/compliance/keywords.py`.
+3. **모바일 가독성 40px+** (CLAUDE.md #3) — 본문 40px / 메타 32px.
+4. **AI prompt 자연어** (CLAUDE.md #8) — 사실 필드만 `exact_korean_strings` 엄격.
 
 ## 3. MVP 흐름
 
@@ -68,7 +70,7 @@
 | `illustration` | 감성형 AI instant | 도입부 사연/분위기 (라인 일러스트 단일 스타일) | [skill](skills/image_types/illustration.md) |
 | `kakao_dialogue` | 감성형 AI thinking | 본문 카톡 대화 시나리오 재현 | [skill](skills/image_types/kakao_dialogue.md) |
 
-**페이지당 mix**: 정보형 1-2 + 감성형 1-2 권장. 콘텐츠 종속 (강제 X). 금지 — 감성형만 / 같은 카드 3연속 / kakao 2개+.
+**페이지당 mix 룰** → [CLAUDE.md](CLAUDE.md) 절대 룰 #5 (정보형 1-2 + 감성형 1-2 mix / 금지 패턴 명세). mix 알고리즘 → `skills/meta/slot_selection.md`.
 
 **카드 카테고리별 사실 정확성**:
 - 정보형 + kakao_dialogue: 본문 1자 변경 X (절대 룰 #1 엄격)
@@ -89,34 +91,28 @@
 
 미구현 paper-only 가드 (cron 무인 가동 시 추가 검토) → [plan_history.md](plan_history.md) §2.
 
-## 6. 비용 cap (v1.6.3 기준)
+## 6. 비용 cap
 
-| 상수 (`tools/limits.py`) | 값 | 의미 |
-|---|---|---|
-| `PER_PAGE_CAP_USD` | $2.50 | 한 페이지 처리 총 비용 한도. 초과 시 페이지 break. |
-| `PER_RUN_CAP_USD` | $8.00 | 한 cron 실행 누적 한도. 5건 × 평균 $1.20-1.60. |
-| `PER_SLOT_COST_CAP_USD` | $0.30 | 슬롯 1개 누적 비용 한도 (gpt-image thinking 변동성 대비). |
-| `ANALYZE_BUDGET_USD` | $0.80 | analyze_content LLM 호출 한도. cache 47K-54K + output 21K 반영. |
-| `REVIEW_BUDGET_USD` | $0.30 | 슬롯별 review_input 호출 한도. |
-
-**Phase 4 안정화 목표**: PER_PAGE $1.20 복귀 (analyze prompt 슬림 + slot_selection 다이어트 후).
+**상수값 SSOT** → `tools/limits.py` (5개: PER_PAGE / PER_RUN / PER_SLOT_COST / ANALYZE_BUDGET / REVIEW_BUDGET). CLAUDE.md "비용 cap 단계"는 mirror — 값 변경은 `tools/limits.py` → CLAUDE.md → plan 변경 X 순.
 
 **페이지당 평균 비용** (실측 + 예측):
 - Phase 2 (정보형만): ~$0.40-0.80
 - Phase 3 (정보 + 감성 mix): ~$0.70-1.00 (5/12 e2e 1페이지 4슬롯 $0.96 — illustration 포함)
 - 월 비용 (40편 기준): ~$28-40
 
+**안정화 목표**: PER_PAGE $1.20 복귀 — 시점/조건은 §10 미결정 참조.
+
 **비용 분리 추적**: `RunBudget.anthropic_usd` / `openai_usd` 별도 (gpt-image 단가 변동성 대비).
 
 ## 7. 카드 추가 절차 (30분 가이드)
 
-진화 축. 새 카드 1종 추가 시 다음 4단계로 끝남:
+새 카드 1종 추가 시 다음 4단계로 끝남 (진화 축 — §1 참조):
 
 1. **`skills/image_types/<name>.md` 작성** — When / Generation method / Variables / Style / Quality criteria. 자연어로.
 2. **렌더 path 추가**:
    - **template**: `templates/<name>.html` 작성 + `tools/render/template_render.py` 분기 1개 (이미 generic하면 추가 불필요)
    - **AI**: `tools/render/ai_render.py`에 `_build_<name>_prompt()` 함수 1개 추가 + `render_ai_card` 분기 1개
-3. **`orchestrator.SUPPORTED_TYPES`에 `<name>` 추가** (line 50). AI면 `AI_CARD_TYPES`에도.
+3. **`orchestrator.SUPPORTED_TYPES`에 `<name>` 추가**. AI면 `AI_CARD_TYPES`에도.
 4. **`orchestrator._render_slot`에 분기 1개 추가** (필요시 schema 검증 포함).
 
 추가 작업 (선택):
@@ -127,7 +123,7 @@
 
 ## 8. 기술 스택
 
-Python 3.12 / uv / Playwright (Chromium-headless-shell) / Chart.js CDN / Pretendard 1.3.9 / notion-client 3.0 (multi-source DB 자동) / Claude Sonnet 4.6 (bundled `claude.exe` subprocess 호출, claude-agent-sdk 우회) / **OpenAI `gpt-image-2-2026-04-21`** (ENV `OPENAI_IMAGE_MODEL_INSTANT/THINKING`로 override) / WebP 후처리 (Pillow lossless).
+상세 → [CLAUDE.md](CLAUDE.md) "기술 스택 한 줄" (의존성 + 모델 + ENV override + Phase 4 검토 모델 포함). plan에는 미러 두지 않음 — drift 방지.
 
 ## 9. 인프라
 
@@ -148,44 +144,112 @@ Python 3.12 / uv / Playwright (Chromium-headless-shell) / Chart.js CDN / Pretend
 
 ## 10. 미결정 사항
 
+> **"Phase 4" 정의**: 운영 안정화 + archive 카드 활성화 + 비용 cap 복귀 단계 (Phase 3 v1.6.4 직후). §12 SDK migration 로드맵은 **병렬 트랙** — SDK migration scope 미결정은 §12.7 참조.
+
 | 항목 | 결정 시점 |
 |---|---|
 | cron schedule 활성화 (workflow_dispatch → schedule) | 운영자 검수 부담 결정 후 |
 | chatgpt-image-latest 비교 | OpenAI organization verification 완료 후 (15분 propagate) |
 | gpt-image-1.5 콘텐츠별 라우팅 | 5/12 비교에서 라인 일러스트 톤 최고였음. 운영 데이터로 결정. |
-| kakao_dialogue OCR Levenshtein 검증 | kakao 실제 trigger 시 추가 (현재 0건) |
+| kakao_dialogue OCR Levenshtein 검증 | kakao 실제 trigger 시 추가 (현재 0건). §12.6 subagent 활성화도 이 시점에 연동. |
 | Phase 4 검토 카드 (stat_highlight / document_excerpt / webtoon / app_ui_mockup) 활성화 | 운영 데이터 + 콘텐츠 적합도 |
-| 페이지 cap $1.20 복귀 (Phase 4) | analyze prompt 슬림 + slot_selection 다이어트 후 |
-| 실패 알림 채널 (이메일 → Slack/Discord) | Phase 4 |
+| 페이지 cap $1.20 복귀 | analyze prompt 슬림 + slot_selection 다이어트 후 |
+| 실패 알림 채널 (이메일 → Slack/Discord) | 운영 안정화 후 |
 
 ## 11. 사용자 사전 작업 체크리스트
 
-### 디자인 자산
-- [x] figma 디자인 시스템 정돈
+완료된 setup (figma 디자인 시스템 / Notion integration / 3개 DB ID·권한 / status 옵션 / Anthropic·OpenAI key / GitHub secret / kakao_dialogue 시드) → 생략. **미완료만**:
+
 - [ ] 이현 로고 svg/png (선택)
-
-### Notion 환경
-- [x] Notion integration 발급
-- [x] 블로그 / 웹 / 로그 DB ID 확보 (`.env`)
-- [x] 3개 DB read + write integration 권한
-- [x] 콘텐츠 DB status 옵션: `이미지 필요`, `발행 필요`, `이미지 작업 중`
-
-### API 계정
-- [x] Anthropic API key
-- [x] OpenAI API key + 사용 한도 알림 ($40/월 권장)
-- [x] GitHub secret 등록
-
-### 시드 자산
-- [x] `reference_library/kakao_dialogue/` 시드 (kakao talk.webp)
 - [ ] `reference_library/illustration/` 라인 일러스트 시드 (운영하면서 좋은 결과물 1-2장 저장 권장)
-
-### 추가 옵션
-- [ ] OpenAI organization verification (`chatgpt-image-latest` 사용)
+- [ ] OpenAI organization verification (`chatgpt-image-latest` 사용 — §10 미결정 연동)
 - [ ] 노션 로그 DB legacy select 옵션 정리 (`table_simple` / `table_comparison` 제거, `출처` 영문 `web`/`blog` 제거 — 한글 통일)
+
+## 12. SDK migration + chart_bar parametric 로드맵 (v1.7.0-plan)
+
+> **한 줄 사상**: "차트는 코드로, 그림은 AI로" — 이미 가진 architecture 그대로. SDK 얹어서 자가 수정 + 차트 4종 → `master_chart.html` 통합 + 2축 parametric.
+>
+> **목표**: agent loop / hooks / subagents를 들이면서 차트 4 sub-type을 단일 `master_chart`로 통합 + 2축 parametric화. "AI가 결과 보고 자가 수정" + "같은 데이터로 다양한 시각 출력" 동시 검증.
+
+### 12.1 배경 — SDK 우회의 후유증
+
+v1.6.4까지 `tools/llm/_common.py`가 bundled `claude.exe` subprocess 호출 (옵션 A). 이유는 (a) claude-agent-sdk 0.1.74가 Opus 4.7 호출 불가 (b) skills 위치 충돌. 결과로 얻은 것: Opus 4.7 사용 + `skills/` 레이아웃 유지. 잃은 것:
+
+- **agent loop** — LLM이 결과 보고 재시도 못 함
+- **hooks** — §23 게이트가 코드 분기(`tools/llm/review.py`)에 박혀서 policy로 추출 안 됨
+- **subagents** — OCR/review 분리 못 함, 메인 context에 혼재
+
+0.2.111+에서 Opus 4.7이 풀린 것으로 보이므로 **제자리 마이그레이션 가능 시점**. 풀 리빌드 X — `orchestrator.main()` + `tools/llm/_common.py` 껍데기만 갈아끼움.
+
+### 12.2 4주 스코프
+
+| 주차 | 작업 | 결과물 |
+|---|---|---|
+| Week 0 | SDK spike (§12.4 가드 1) | 4개 검증 항목 통과 |
+| Week 1-2 | SDK 0.2.111+ 마이그레이션. `claude.exe` 경로 제거. agent loop 활성. 차트/AI 카드 양쪽에 자가 수정 능력 적용. | SDK 경로로 e2e 1페이지 통과 |
+| Week 3a | `chart_bar/line/donut/pie.html` 4개 → `master_chart.html` 1개 통합. `ChartLineData/ChartBarData/ChartDonutData` → `ChartSpec` 단일 스키마 (`chart_type` 필드 분기). **회귀 검증 방법**: 4 sub-type 각 sample input 픽스처 1개씩 (`tests/fixtures/chart_*.json`) → pre-refactor 렌더 PNG 저장 → post-refactor 렌더 PNG → SHA 또는 OCR text diff 비교. 차이 0 → 통과. | `master_chart.html` + `ChartSpec` 단일 스키마 + 4 sub-type 회귀 0. |
+| Week 3b | `master_chart`에 손잡이 2개 추가: ① `orientation: 'vertical'\|'horizontal'` — **bar/line 적용** (donut/pie는 원형이라 의미 없음, null 허용). ② `emphasis_index: int\|null` — **4 sub-type 공통**. `ChartSpec` / `skills/image_types/chart.md` 동기. donut/pie 전용 axis(`start_angle` / `label_position` / `slice_explode` 등)는 Week 5+ 별도 결정. | bar/line: 2축 곱 = 4-variant. donut/pie: emphasis만 적용. |
+| Week 4 | **bar 3회 e2e** (같은 데이터셋, visually distinct 검증 — §12.4 가드 2) + **line/donut/pie 각 1회 e2e** (master_chart 통합 회귀 검증, Phase 3 v1.6.4 결과물과 시각/사실 동일). 총 6회. | bar 2/3 distinct + 비-bar 3종 회귀 통과 → Week 5 진행 |
+| 이후 | distinct OK면 Week 4 압력 보고 `master_chart` 손잡이 추가 (schema emerge — 인간이 미리 박지 않음). 미달이면 §12.5 분기. | vocabulary 확장 또는 composition primitive 검토 |
+
+### 12.3 안 하는 것 (확실히)
+
+- ❌ **차트도 gpt-image-2로** — 환각/§23 검증 불가. plan_history v1.6.1 "62.5% → 65.2%" 사고 재발. 차트는 Chart.js 유지.
+- ❌ **table/key_points/timeline까지 1개 generic으로 통합** (`generic_infographic.html`) — DOM 본질이 다름 (각각 `<table>`, grid `<div>`, ordered steps). 합치면 슬롯 스키마 가드 깨지고 절대 룰 #1 회귀. *(단, 차트 4 sub-type 통합은 별개 — DOM 동일하므로 §12.2 Week 3a에서 실행)*
+- ❌ **illustration/kakao 갈아엎기** — v1.6.4에서 안정. 손대지 않음.
+
+### 12.4 사전 가드
+
+**가드 1 — Week 0 SDK spike (1일)**. 본격 마이그레이션 전 검증:
+
+- claude-agent-sdk 0.2.111+ Opus 4.7 호출 OK
+- `exact_korean_strings` 1자도 변경 X 보존 (절대 룰 #1 인프라)
+- `token-ledger.ndjson` 비용 계상이 SDK 경로에서도 동일 작동
+- skill markdown을 system_prompt에 inject (옵션 A) 가능
+
+→ 4개 중 하나라도 막히면 Week 1-2 일정 재산정.
+
+**가드 2 — Week 4 합격선** (두 갈래):
+
+- **(a) bar 3회 e2e — parametric distinct**: 같은 데이터셋 → visually distinct 결과 **2/3 이상**. distinct 판정: orientation 변경 OR emphasis 위치 변경 OR 둘 다. 1/3 이하 → "parametric 가설 약함" 신호 → §12.5 분기.
+- **(b) line/donut/pie 각 1회 e2e — 통합 회귀**: master_chart 단일 스키마로 렌더한 결과가 Phase 3 v1.6.4 chart_line/donut/pie 결과물과 시각/사실 동일. 차이 발생 시 Week 3a 회귀 검증 누락으로 간주, Week 3a 재진입.
+
+### 12.5 Week 4 결과별 분기
+
+| Week 4 결과 | 다음 단계 |
+|---|---|
+| distinct 2/3+ | Week 5-6 line/donut/pie 동일 parametric 작업 |
+| distinct 1/3 이하 | parametric vocab 확장 X. **composition primitive 검토** (grid cell + callout slot + multi-panel). 25장 레퍼런스의 50-70%는 parametric이 아니라 composition 결정에서 옴 |
+
+### 12.6 subagent 분리 기준 (Week 1-2 가이드)
+
+claude-agent-sdk subagent는 자체 context 격리됨. 따라서:
+
+- **stateless task → subagent**: §23 키워드 regex pass (구현됨), 이미지 vision 사실 검증, OCR Levenshtein 검사 (미구현 — kakao 실제 trigger 시 활성화, §10 참조)
+- **stateful review → 메인 loop + hook**: "이 차트 에디토리얼 품질" 같은 원본 spec + 추론 맥락 필요한 평가
+
+처음부터 다 subagent로 빼지 말기 — context 부족으로 평가 부실 위험.
+
+### 12.7 미결정 (Week 0 이후 결정)
+
+- claude-agent-sdk 정확 버전 (0.2.111+ 중 어디 고정할지)
+- agent loop max iteration cap (비용 폭주 방지)
+- `master_chart` emphasis_index의 시각 표현 (색상 강조 / 라벨 강조 / 둘 다)
+- donut/pie 전용 axis 후보 (`start_angle` / `label_position` / `slice_explode` 등) — Week 4 결과 보고 Week 5+에 결정
 
 ---
 
 ## Changelog
+
+- **v1.7.1-plan** (2026-05-12): plan 문서 정리. **plan only — 코드/스코프 변경 X**.
+  - **A. CLAUDE.md 중복 제거 (drift source 차단)**: §2 절대 룰 / §4 페이지당 mix / §6 비용 cap 상수값 / §8 기술 스택 — 모두 CLAUDE.md를 SSOT로 위임, plan은 인덱스/cross-ref만.
+  - **B. drift-prone 참조 제거**: §7 line 50 reference 제거.
+  - **C. 내부 redundancy**: §1+§7 "진화 축" 중복 → §7에서 §1 cross-ref.
+  - **D. 모순 / stale 해소**: §10 "Phase 4" 의미 명확화 (= 운영 안정화 단계, §12 SDK migration과 병렬 트랙) + §12.6 OCR 예시에 "미구현" 명시 + §10 OCR row에 §12.6 cross-ref.
+  - **E. 완료 history 압축**: §11 사용자 사전 작업 체크리스트 — 완료 setup 생략, 미완료 4건만 유지.
+  - plan 약 273줄 → 약 240줄.
+
+- **v1.7.0-plan** (2026-05-12): §12 SDK migration + 차트 통합/parametric 로드맵 신설. **plan only — 코드 변경 X.** 배경: SDK 우회(옵션 A)의 후유증(agent loop / hooks / subagents 부재) 진단 + 4주 스코프 확정 (Week 0 spike → Week 1-2 SDK 마이그레이션 → **Week 3a 차트 4종 → `master_chart.html` 단일 통합 (회귀 검증: sample input PNG SHA/OCR diff = 0) → Week 3b 2축 parametric (orientation은 bar/line만, emphasis_index는 4 sub-type 공통)** → Week 4 bar 3회 distinct 검증 + line/donut/pie 각 1회 통합 회귀 검증, 총 6회). 차트 통합은 4 sub-type이 모두 canvas + Chart.js로 DOM 동일하므로 허용; table/key_points/timeline 통합은 DOM 본질 다르므로 거부. "차트도 gpt-image-2로 / 비차트까지 generic 통합" 등 절대 룰 #1 회귀 항목 명시 거부. Week 4 결과 미달 시 composition primitive 분기 예약. donut/pie 전용 axis는 Week 5+ 별도 결정 (미결정).
 
 - **v1.6.4** (2026-05-12): 이미지 모델 5종 비교 + default `gpt-image-2-2026-04-21` 채택
   - **OpenAI 가용 모델 9종 발견**: `chatgpt-image-latest` (org verification 필요), `gpt-image-1`, `gpt-image-1-mini`, `gpt-image-1.5`, `gpt-image-2`, `gpt-image-2-2026-04-21`, `sora-2`, `sora-2-pro`, `dall-e-2/3`.
