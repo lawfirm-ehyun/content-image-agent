@@ -237,9 +237,72 @@ claude-agent-sdk subagent는 자체 context 격리됨. 따라서:
 - `master_chart` emphasis_index의 시각 표현 (색상 강조 / 라벨 강조 / 둘 다)
 - donut/pie 전용 axis 후보 (`start_angle` / `label_position` / `slice_explode` 등) — Week 4 결과 보고 Week 5+에 결정
 
+## 13. SEO + a11y 메타데이터 (alt_text + filename_slug) — v1.7.2-plan
+
+> **한 줄 사상**: LLM이 이미 카드의 모든 사실을 알고 있으므로 alt 한 줄 생성은 0 marginal. Notion = staging + 인간 검수 → 발행 path니까 caption→alt 매핑 검증 불필요, Notion *어디든* 들어가기만 하면 됨.
+>
+> **§12와 독립** — SDK migration 전/후 무관, 현재 `claude.exe` 경로에서 그대로 ship 가능. Week 0 SDK spike *전*에 끼우기로 결정.
+
+### 13.1 목표
+
+- **alt_text**: SEO 검색 노출 + a11y 스크린리더 지원 (한국 법률 콘텐츠 a11y 영역 의무에 가까움)
+- **filename_slug**: 발행 시 CDN URL 의미 있는 파일명
+
+### 13.2 적용 범위
+
+7종 카드 모두 (`simple_table` / `chart` 4 sub-type / `comparison_table` / `key_points_card` / `timeline` / `illustration` / `kakao_dialogue`). 슬롯 단위 1쌍.
+
+### 13.3 데이터 흐름
+
+```
+[analyze_content]
+  └─ LLM이 alt_text + filename_slug 생성 (parametric 결정 전, data-only)
+        ↓
+[review_input]
+  └─ alt_text 사실 일치 + §23 검사 (filename_slug는 길이/regex만)
+        ↓
+[Notion 삽입]
+  ├─ image block
+  └─ callout block (💡) 1개 — 이미지 직후 (인간 검수자 발견성 ↑)
+        Content: [ALT] {alt_text}
+                 [FILENAME] {filename_slug}.webp
+```
+
+### 13.4 가드
+
+| 가드 | 적용 |
+|---|---|
+| 사실 정확성 #1 | 슬롯 데이터 안 내용만 기술. alt도 `review.py` 검사 대상 (라벨링 영역) |
+| §23 컴플라이언스 | alt에 절대성/과장/시간 압박/비교 광고 표현 X. `tools/compliance/keywords.py` regex pass 적용 |
+| 길이 제한 | `alt_text` 125자 이하 (Google 권장치), `filename_slug` 80자 이하 |
+| `filename_slug` 형식 | snake_case, 영문 소문자/숫자/`_`만 (한글 X — CDN URL 호환성) |
+
+### 13.5 작업 항목 (예상 1-2일)
+
+1. 슬롯 스키마 7종 모두에 `alt_text: str`, `filename_slug: str` 필드 추가
+2. `skills/meta/slot_selection.md` 또는 `analyze_content` system prompt에 생성 룰 추가 (한국어 125자 이하 / 차트 핵심 인사이트 1개 / 출처 포함 가능)
+3. `tools/llm/review.py` alt_text 검사 항목 추가 (§23 + 본문 일치)
+4. validator 추가 (길이 / filename regex) — `tools/limits.py` 또는 dataclass `__post_init__`
+5. `tools/notion/insert_image_block.py` callout block 1개 삽입 로직 (image block 직후)
+6. 1페이지 e2e 검증 — 7종 카드 중 활성 슬롯에 callout이 정확히 들어가는지
+
+### 13.6 §12와의 관계
+
+- 완전 독립 트랙. SDK migration 전/후 어느 쪽에서도 작동
+- §12 Week 3b parametric 결정(`orientation` / `emphasis_index`)은 alt에 반영 X — alt는 **data-only**, 시각 강조 묘사 X
+- §12 Week 1-2 SDK 마이그레이션 시 검증 항목: 새 SDK 경로에서도 `analyze_content`가 `alt_text` / `filename_slug`를 동일하게 emit하는지
+
+### 13.7 미결정
+
+- Notion 형식 — callout 채택했으나 검수자 워크플로우 1주일 운영 후 재검토 (caption / paragraph block 비교)
+- `filename_slug` 한글→영문 변환 룰 — 첫 PR은 LLM이 영문 키워드 기반 생성 (음역 X). 운영 후 결정.
+- 7종 카드 *공통* 룰 vs *카드별* 룰 — 첫 PR은 공통. illustration처럼 데이터 없는 카드는 prompt에 별도 가이드 필요할 수 있음.
+
 ---
 
 ## Changelog
+
+- **v1.7.2-plan** (2026-05-12): §13 SEO + a11y 메타데이터 트랙 신설. **plan only — 코드는 별도 PR**. 배경: Notion = staging + 인간 검수 → 발행 path 확인 (caption→HTML alt 매핑 검증 불필요). alt_text(125자, SEO+a11y) + filename_slug(snake_case 영문, CDN URL) 슬롯 1쌍 LLM 생성. Notion 형식: 이미지 직후 callout block 1개 (`[ALT] ... [FILENAME] ...`). 7종 카드 공통 적용. §12 SDK migration과 완전 독립 — Week 0 spike 전 standalone PR로 ship. 가드: 사실 정확성 #1 + §23 + 길이/regex validator.
 
 - **v1.7.1-plan** (2026-05-12): plan 문서 정리. **plan only — 코드/스코프 변경 X**.
   - **A. CLAUDE.md 중복 제거 (drift source 차단)**: §2 절대 룰 / §4 페이지당 mix / §6 비용 cap 상수값 / §8 기술 스택 — 모두 CLAUDE.md를 SSOT로 위임, plan은 인덱스/cross-ref만.
