@@ -22,7 +22,12 @@ from typing import Any, Literal
 
 from tools.budget import RunBudget
 from tools.image.webp_converter import png_to_webp
-from tools.limits import PER_PAGE_CAP_USD, PER_RUN_CAP_USD, PER_SLOT_ATTEMPTS
+from tools.limits import (
+    PER_PAGE_CAP_USD,
+    PER_RUN_CAP_USD,
+    PER_SLOT_ATTEMPTS,
+    PER_SLOT_COST_CAP_USD,
+)
 from tools.llm._common import compact_blocks
 from tools.llm.analyze_content import analyze_content
 from tools.llm.review import review_input
@@ -33,6 +38,7 @@ from tools.notion.insert_image_block import insert_image_block
 from tools.notion.log_metadata import get_logged_page_ids, log_metadata
 from tools.notion.update_status import update_page_status
 from tools.notion.upload_image import upload_image
+from tools.render.ai_render import render_ai_card
 from tools.render.chart_render import (
     ChartBarData,
     ChartDataError,
@@ -47,8 +53,13 @@ from tools.render.template_render import render_template
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_TYPES = {"simple_table", "chart", "comparison_table", "timeline", "key_points_card"}
+# v1.6.1: Phase 3 감성형 카드 (illustration / kakao_dialogue) 추가.
+SUPPORTED_TYPES = {
+    "simple_table", "chart", "comparison_table", "timeline", "key_points_card",
+    "illustration", "kakao_dialogue",
+}
 SUPPORTED_CHART_SUB_TYPES = {"line", "bar", "donut", "pie"}
+AI_CARD_TYPES = {"illustration", "kakao_dialogue"}  # ai_render path로 분기되는 카드
 
 
 @dataclass
@@ -116,8 +127,12 @@ async def _log_review_dispose(
 
 async def _render_slot(
     slot: dict[str, Any], out_png: Path,
-) -> None:
-    """슬롯 type별 렌더 분기. 실패 시 예외 raise."""
+) -> float:
+    """슬롯 type별 렌더 분기. 실패 시 예외 raise.
+
+    반환: image generation 비용 USD (template/chart는 0.0, AI 카드는 gpt-image 비용).
+    LLM review 비용은 caller(_process_slot)가 별도 누적.
+    """
     stype = slot["type"]
     data = slot["extracted_data"]
     if stype == "chart":
@@ -238,8 +253,13 @@ async def _render_slot(
             ),
             out_png,
         )
+    elif stype in AI_CARD_TYPES:
+        # v1.6.1 — AI 카드 (illustration / kakao_dialogue). ai_render가 gpt-image 호출 + PNG 저장.
+        result = await render_ai_card(stype, data, out_png)
+        return result.cost_usd
     else:
         raise ValueError(f"지원되지 않는 type={stype!r}")
+    return 0.0  # template / chart는 generation 비용 0 (LLM review만 누적)
 
 
 async def _process_slot(
@@ -294,11 +314,14 @@ async def _process_slot(
         return SlotResult(stype, sub, False, None, issues, slot_cost, 0)
 
     # 렌더 + 업로드 (시도 PER_SLOT_ATTEMPTS회)
+    image_cost_total = 0.0  # v1.6.1 — AI 카드(gpt-image) 비용 누적
     while attempts < PER_SLOT_ATTEMPTS:
         attempts += 1
         try:
             png = work_dir / f"slot_{stype}_{attempts}.png"
-            await _render_slot(slot, png)
+            image_cost = await _render_slot(slot, png)
+            image_cost_total += image_cost
+            slot_cost += image_cost
             webp = png_to_webp(png)
 
             # review_image (Phase 1 = 형식 검증만)
@@ -321,9 +344,21 @@ async def _process_slot(
             issues.append(f"시도 {attempts} 실패: {e}")
             logger.warning("slot %s 시도 %d 실패: %s", stype, attempts, e)
 
-    # 페이지 비용 cap 체크 (시도 후)
+    # 비용 cap 체크 (시도 후)
+    if slot_cost > PER_SLOT_COST_CAP_USD:
+        issues.append(f"슬롯 비용 cap 초과 ({slot_cost:.3f} USD > {PER_SLOT_COST_CAP_USD})")
     if page_cost_so_far + slot_cost > PER_PAGE_CAP_USD:
         issues.append(f"페이지 비용 cap 초과 ({page_cost_so_far + slot_cost:.3f} USD)")
+
+    # v1.6.1 — generation_method: AI 카드 분기. quality에 따라 instant/thinking.
+    if stype == "illustration":
+        gen_method: Literal["template", "gpt-image-2-instant", "gpt-image-2-thinking"] = (
+            "gpt-image-2-instant"
+        )
+    elif stype == "kakao_dialogue":
+        gen_method = "gpt-image-2-thinking"
+    else:
+        gen_method = "template"
 
     # 로그 기록 (성공/실패 무관)
     try:
@@ -333,7 +368,7 @@ async def _process_slot(
             page_source=page_source,
             slot_type=stype,
             slot_sub_type=sub,
-            generation_method="template",
+            generation_method=gen_method,
             input_data={
                 **slot["extracted_data"],
                 "notion_block_id": new_block_id,
