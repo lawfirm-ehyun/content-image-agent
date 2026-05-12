@@ -1,4 +1,4 @@
-# 이현 블로그 이미지 에이전트 — Plan (v1.7.1-plan)
+# 이현 블로그 이미지 에이전트 — Plan (v1.7.3-plan)
 
 > 노션 콘텐츠에 자동으로 이미지 카드 박는 에이전트.
 >
@@ -170,6 +170,8 @@ plan 안에서 자주 참조하는 핵심 4개:
 > **한 줄 사상**: "차트는 코드로, 그림은 AI로" — 이미 가진 architecture 그대로. SDK 얹어서 자가 수정 + 차트 4종 → `master_chart.html` 통합 + 2축 parametric.
 >
 > **목표**: agent loop / hooks / subagents를 들이면서 차트 4 sub-type을 단일 `master_chart`로 통합 + 2축 parametric화. "AI가 결과 보고 자가 수정" + "같은 데이터로 다양한 시각 출력" 동시 검증.
+>
+> **🔒 Plan freeze (v1.7.3+)**: Week 0 spike 실측 데이터 받기 전까지 추가 refine 없음. mid-checkpoint decision gate / falsifiable Week 4 기준 / composition phase reframing 등 후속 보강은 *그 시점 데이터 보고* 결정. plan은 지도이지 destination이 아님 — 코드 작성 우선.
 
 ### 12.1 배경 — SDK 우회의 후유증
 
@@ -207,7 +209,7 @@ v1.6.4까지 `tools/llm/_common.py`가 bundled `claude.exe` subprocess 호출 (�
 - `token-ledger.ndjson` 비용 계상이 SDK 경로에서도 동일 작동
 - skill markdown을 system_prompt에 inject (옵션 A) 가능
 
-→ 4개 중 하나라도 막히면 Week 1-2 일정 재산정.
+→ 4개 중 하나라도 막히면 fallback 3경로 중 spike 결과 보고 선택: **(a)** Opus 4.7 호출 실패 시 → Sonnet 4.6로 진행 / **(b)** skill inject 막힘 시 → 옵션 B (`.claude/skills/`로 이동 + SDK auto-load) 수용 / **(c)** 비용 계상 깨짐 시 → claude.exe wrapper 유지 + SDK는 hooks/subagents만 사용 (하이브리드).
 
 **가드 2 — Week 4 합격선** (두 갈래):
 
@@ -301,6 +303,8 @@ claude-agent-sdk subagent는 자체 context 격리됨. 따라서:
 ---
 
 ## Changelog
+
+- **v1.7.3-plan** (2026-05-12): §12.4 Week 0 spike fallback 3경로 1줄 enumerate (Sonnet 4.6 / 옵션 B skills 이동 / claude.exe + SDK 하이브리드). **Plan freeze 선언** — mid-checkpoint decision gate, falsifiable Week 4 기준, §12.5 composition phase reframing 등 후속 보강은 Week 0 spike 실측 데이터 받기 전까지 보류. 배경: plan-fixing이 회피 행동(procrastination dressed as rigor)으로 전환되는 패턴 감지. 80% plan으로 출발이 100% plan보다 빠름. 다음 plan 변경은 1주 코드 작업 후 재검토.
 
 - **v1.7.2-plan** (2026-05-12): §13 SEO + a11y 메타데이터 트랙 신설. **plan only — 코드는 별도 PR**. 배경: Notion = staging + 인간 검수 → 발행 path 확인 (caption→HTML alt 매핑 검증 불필요). alt_text(125자, SEO+a11y) + filename_slug(snake_case 영문, CDN URL) 슬롯 1쌍 LLM 생성. Notion 형식: 이미지 직후 callout block 1개 (`[ALT] ... [FILENAME] ...`). 7종 카드 공통 적용. §12 SDK migration과 완전 독립 — Week 0 spike 전 standalone PR로 ship. 가드: 사실 정확성 #1 + §23 + 길이/regex validator.
 
