@@ -1,0 +1,42 @@
+{
+  "purpose": "v1.6.4 chart_bar baseline — Week 3a master_chart 통합 회귀 가드",
+  "spec_ref": "plan v1.7.3 §12.2 — bar는 Week 4 가드 2 (a) distinct 검증 베이스라인",
+  "sub_type": "bar",
+  "render_fn": "tools.render.chart_render.render_chart_bar",
+  "template": "templates/chart_bar.html",
+  "input": {
+    "title": "올림픽 개최지별 한국 금메달",
+    "labels": [
+      "베이징",
+      "런던",
+      "리우",
+      "도쿄",
+      "파리"
+    ],
+    "values": [
+      13,
+      13,
+      9,
+      6,
+      13
+    ],
+    "point_labels": [
+      "13개",
+      "13개",
+      "9개",
+      "6개",
+      "13개"
+    ],
+    "y_unit": "(개)",
+    "source": "출처: IOC (테스트 픽스처, §23-safe)",
+    "y_min": 0,
+    "y_max": 15
+  },
+  "captured_baseline": {
+    "png_path": "chart_bar.png",
+    "png_bytes": 34365,
+    "sha256": "278f3aa31cd89c5437d5bb04ab26f9902a8ecff590fa961995ab01cc646b811a",
+    "captured_at": "2026-05-13T07:01:02+00:00",
+    "git_commit": "a12f666197ada861f48ed71b70b06101cc4e0917"
+  }
+}
