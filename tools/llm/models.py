@@ -11,8 +11,9 @@ from typing import Final
 # tools/llm/models.py → repo root
 _ROOT = Path(__file__).resolve().parents[2]
 
-# claude-agent-sdk 0.1.x가 .venv에 동봉하는 bundled Claude Code CLI.
-# SDK는 우회하지만 CLI 자체는 직접 invoke (subprocess.run) — _common.query_json 참고.
+# claude-agent-sdk 0.1.x가 .venv에 동봉하는 bundled Claude Code CLI 경로.
+# §12 Week 1-2 이후 SDK query()가 내부적으로 이 CLI를 spawn — production 코드에서
+# 직접 참조 X. dead reference이지만 cleanup은 별도 코밋으로 미룸 (drift 룰 #7).
 CLAUDE_EXE: Final[Path] = (
     _ROOT / ".venv" / "Lib" / "site-packages" / "claude_agent_sdk" / "_bundled" / "claude.exe"
 )
