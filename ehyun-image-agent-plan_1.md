@@ -184,13 +184,15 @@ v1.6.4까지 `tools/llm/_common.py`가 bundled `claude.exe` subprocess 호출 (�
 0.2.111+에서 Opus 4.7이 풀린 것으로 보이므로 **제자리 마이그레이션 가능 시점**. 풀 리빌드 X — `orchestrator.main()` + `tools/llm/_common.py` 껍데기만 갈아끼움.
 
 > **Week 0 spike 노트 (2026-05-12, N=4 한계)**: claude-agent-sdk 0.1.77 + Sonnet 4.6 + `max_turns=1 + setting_sources=[]` 가드 하에 SDK 호출이 subprocess 대비 일관 **0.34-0.64x cost** 측정됨 (N=4, `scripts/_spike_sdk.py`). 위 "토큰 비용 3배+" 우려 frame 재측정 트리거. 다만 N 한계 + 합성 본문(`tests/fixtures/spike_sdk_baseline.json`) + cache miss 조건이므로 단정 X. Week 1-2 통합 시 실제 본문 + cache hit 포함 N≥3 재측정 예정.
+>
+> **Week 1-2 production 측정 (2026-05-13, N=3, `scripts/_spike_n3_cost.py`)**: 블로그 DB 1페이지 (73 compacted blocks, ~5825c 본문) `analyze_content` N=3 → mean **$0.2617**, max $0.3357, min $0.1459, **cache ratio min/max 0.43x** (cache hit 자동 작동). `ANALYZE_BUDGET_USD=$0.80` cap 안전. SDK path는 functional regression 0 — spike fixture에서 사실 데이터(values/rows) 1자 보존 + title/headers 라벨링은 LLM stochastic 변동(절대 룰 #1 허용 영역), review_input passed=True. spike의 0.34-0.64x는 *vs subprocess 비교*, production 0.43x는 *vs same-page cache miss 비교* — 별도 척도.
 
 ### 12.2 4주 스코프
 
 | 주차 | 작업 | 결과물 |
 |---|---|---|
 | Week 0 | SDK spike (§12.4 가드 1) | 4개 검증 항목 통과 |
-| Week 1-2 | SDK 0.2.111+ 마이그레이션. `claude.exe` 경로 제거. agent loop 활성. 차트/AI 카드 양쪽에 자가 수정 능력 적용. | SDK 경로로 e2e 1페이지 통과 |
+| Week 1-2 | **claude-agent-sdk 0.1.77 `query()` 직접 호출**로 `tools/llm/_common.py:query_json` 갈아끼움 (subprocess 경로 dead reference). agent loop / hooks / subagents 풀 도입 X — §12.6 "처음부터 다 빼지 말기" 정신. 단발 `query()` 1회 + `max_turns=1` + `setting_sources=[]` 가드 유지. 자가 수정 / 차트 자동화는 Week 3a+ 이후 별도 진입. | SDK 경로로 `analyze_content` + `review_input` 통과. spike fixture e2e (b7fe789) + production 1페이지 N=3 측정 (§12.1). |
 | Week 3a | `chart_bar/line/donut/pie.html` 4개 → `master_chart.html` 1개 통합. `ChartLineData/ChartBarData/ChartDonutData` → `ChartSpec` 단일 스키마 (`chart_type` 필드 분기). **회귀 검증 방법**: 4 sub-type 각 sample input 픽스처 1개씩 (`tests/fixtures/chart_*.json`) → pre-refactor 렌더 PNG 저장 → post-refactor 렌더 PNG → SHA 또는 OCR text diff 비교. 차이 0 → 통과. | `master_chart.html` + `ChartSpec` 단일 스키마 + 4 sub-type 회귀 0. |
 | Week 3b | `master_chart`에 손잡이 2개 추가: ① `orientation: 'vertical'\|'horizontal'` — **bar/line 적용** (donut/pie는 원형이라 의미 없음, null 허용). ② `emphasis_index: int\|null` — **4 sub-type 공통**. `ChartSpec` / `skills/image_types/chart.md` 동기. donut/pie 전용 axis(`start_angle` / `label_position` / `slice_explode` 등)는 Week 5+ 별도 결정. | bar/line: 2축 곱 = 4-variant. donut/pie: emphasis만 적용. |
 | Week 4 | **bar 3회 e2e** (같은 데이터셋, visually distinct 검증 — §12.4 가드 2) + **line/donut/pie 각 1회 e2e** (master_chart 통합 회귀 검증, Phase 3 v1.6.4 결과물과 시각/사실 동일). 총 6회. | bar 2/3 distinct + 비-bar 3종 회귀 통과 → Week 5 진행 |
@@ -212,6 +214,8 @@ v1.6.4까지 `tools/llm/_common.py`가 bundled `claude.exe` subprocess 호출 (�
 - skill markdown을 system_prompt에 inject (옵션 A) 가능
 
 → 4개 중 하나라도 막히면 fallback 3경로 중 spike 결과 보고 선택: **(a)** Opus 4.7 호출 실패 시 → Sonnet 4.6로 진행 / **(b)** skill inject 막힘 시 → 옵션 B (`.claude/skills/`로 이동 + SDK auto-load) 수용 / **(c)** 비용 계상 깨짐 시 → claude.exe wrapper 유지 + SDK는 hooks/subagents만 사용 (하이브리드).
+
+→ **결과 (2026-05-12 spike b7fe789, 2026-05-13 Week 1-2 진입)**: 4개 항목 통과 (SDK 0.1.77 + Sonnet 4.6, `tests/fixtures/spike_sdk_baseline.json` N=4 byte-identical simple_table). 추가로 Week 1-2 진입 시 **Opus 4.7 ping 1회 = success** (subtype=success, cost $0.16, SDK 0.1.77 그대로) — fallback (a) 회피, 0.2.111+ 업그레이드 정당성 부재. token-ledger 비용 계상은 production 본격 통합 후 별도 검증 (`scripts/_spike_n3_cost.py`는 ledger 우회).
 
 **가드 2 — Week 4 합격선** (두 갈래):
 
@@ -236,10 +240,11 @@ claude-agent-sdk subagent는 자체 context 격리됨. 따라서:
 
 ### 12.7 미결정 (Week 0 이후 결정)
 
-- claude-agent-sdk 정확 버전 (0.2.111+ 중 어디 고정할지)
-- agent loop max iteration cap (비용 폭주 방지)
+- ~~claude-agent-sdk 정확 버전 (0.2.111+ 중 어디 고정할지)~~ → **0.1.77 고정 (2026-05-13)**. Opus 4.7 호출 OK + spike 4 checks + production N=3 모두 0.1.77로 통과. 0.2.111+ 업그레이드는 hooks/subagents 풀 도입 필요 시점에 재평가.
+- agent loop max iteration cap (비용 폭주 방지) — Week 3a+ agent loop 활성 시점에 결정
 - `master_chart` emphasis_index의 시각 표현 (색상 강조 / 라벨 강조 / 둘 다)
 - donut/pie 전용 axis 후보 (`start_angle` / `label_position` / `slice_explode` 등) — Week 4 결과 보고 Week 5+에 결정
+- `tools/llm/models.py:CLAUDE_EXE` dead reference cleanup 시점 — 직후 cleanup 코밋 예정
 
 ## 13. SEO + a11y 메타데이터 (alt_text + filename_slug) — v1.7.2-plan
 
