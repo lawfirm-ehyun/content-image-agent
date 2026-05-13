@@ -383,7 +383,13 @@
         },
       },
     };
-    if (ORIENTATION === 'horizontal') chartOptions.indexAxis = 'y';
+    if (ORIENTATION === 'horizontal') {
+      chartOptions.indexAxis = 'y';
+      // Week 4 fix: horizontal에선 막대 우측 외부에 라벨을 그리므로 right padding 확장.
+      // "33,581건" 같은 32px bold 라벨은 약 120-130px → 140 여유. vertical default
+      // path는 이 분기에 진입 X (padding.right=16 그대로 = byte-identity 유지).
+      chartOptions.layout.padding.right = 140;
+    }
 
     new Chart(document.getElementById('chart'), {
       type: 'bar',
