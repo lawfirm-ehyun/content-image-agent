@@ -1,5 +1,6 @@
 # 블로그/웹 페이지 한 건의 이미지를 생성·배치한다.
-# Phase 1: 카드 2종(simple_table + chart_line)만 활성, 수동 trigger.
+# Phase 3 v1.6.4: 정보형 5종 (simple_table, master_chart line/bar/donut/pie,
+# comparison_table, key_points_card, timeline) + 감성형 2종 (illustration, kakao_dialogue) 활성.
 name: blog_image
 version: 1.1.0
 description: 블로그/웹 페이지 한 건의 이미지를 생성·배치한다
@@ -17,7 +18,8 @@ stages:
     description: |
       본문 블록을 읽고 image_slots 결정 (0개도 가능, 보통 1-3개).
       각 슬롯: { type, sub_type?, position_after_block_id, extracted_data }
-      Phase 1 활성 type: simple_table | chart(sub_type=line). 다른 패턴은 슬롯 결정 X.
+      활성 type: simple_table | chart(sub_type=line|bar|donut|pie) | comparison_table |
+                key_points_card | timeline | illustration | kakao_dialogue.
 
   - name: generate_per_slot
     foreach: image_slots
@@ -35,7 +37,7 @@ stages:
       - name: generate_image
         tool: |
           if slot.type == "chart":
-            tools/render/chart_render.py:render_chart_line
+            tools/render/chart_render.py:render_chart  # ChartSpec(sub_type=...) — master_chart.html
           else:
             tools/render/template_render.py:render_template
         post: tools/image/webp_converter.py:png_to_webp

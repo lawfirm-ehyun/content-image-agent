@@ -48,7 +48,7 @@ cp .env.example .env
 
 ### Phase 1 (진행 중)
 - [`styles/ehyun_default.yaml`](styles/ehyun_default.yaml) — 디자인 토큰
-- [`templates/`](templates/) — `_base.css`, `simple_table.html`, `chart_line.html`
+- [`templates/`](templates/) — `_base.css`, `simple_table.html`, `master_chart.html` (line/bar/donut/pie 통합 — plan §12.2 Week 3a)
 - [`tools/render/`](tools/render/) — Playwright + Chart.js 렌더, 데이터 검증
 - [`tools/notion/`](tools/notion/) — 6개 모듈
 - [`tools/llm/`](tools/llm/) — bundled CLI subprocess 패턴
