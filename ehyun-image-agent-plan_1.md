@@ -244,7 +244,7 @@ claude-agent-sdk subagent는 자체 context 격리됨. 따라서:
 - agent loop max iteration cap (비용 폭주 방지) — Week 3a+ agent loop 활성 시점에 결정
 - `master_chart` emphasis_index의 시각 표현 (색상 강조 / 라벨 강조 / 둘 다)
 - donut/pie 전용 axis 후보 (`start_angle` / `label_position` / `slice_explode` 등) — Week 4 결과 보고 Week 5+에 결정
-- `tools/llm/models.py:CLAUDE_EXE` dead reference cleanup 시점 — 직후 cleanup 코밋 예정
+- ~~`tools/llm/models.py:CLAUDE_EXE` dead reference cleanup 시점~~ → **완료 (2026-05-13)**. 변수 제거 + `PROJECT_CONTEXT.md` §3 동기화.
 
 ## 13. SEO + a11y 메타데이터 (alt_text + filename_slug) — v1.7.2-plan
 
