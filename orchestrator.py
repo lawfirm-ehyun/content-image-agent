@@ -147,6 +147,8 @@ async def _render_slot(
             raise ChartDataError(f"chart sub_type={sub} 필수 필드 누락: {missing}")
 
         # Week 3a (plan §12.2): 4 sub-type 단일 ChartSpec + master_chart.html path.
+        # Week 3b: orientation(line/bar) + emphasis_index(공통) 2축 parametric.
+        # 둘 다 default(vertical, None)면 Week 3a byte-identity 동작 유지.
         # line/bar는 sub_labels/y_unit/y_min/y_max를 사용, donut/pie는 무시(ChartSpec에선 None).
         spec = ChartSpec(
             sub_type=sub,
@@ -159,6 +161,8 @@ async def _render_slot(
             y_min=data.get("y_min"),
             y_max=data.get("y_max"),
             source=data.get("source"),
+            orientation=data.get("orientation", "vertical"),
+            emphasis_index=data.get("emphasis_index"),
         )
         await render_chart(spec, out_png)
     elif stype == "simple_table":

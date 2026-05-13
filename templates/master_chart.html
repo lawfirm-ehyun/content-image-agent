@@ -23,8 +23,16 @@
     colors       : list[str] — _assign_colors() 매핑 결과
     cutout       : str | int — donut '55%' / pie 0
 
-  Week 3b+ 손잡이(orientation/emphasis_index/start_angle 등)는 본 파일에 미리 박지 X.
-  지금은 v1.6.4 byte-identity가 유일한 합격선.
+    # Week 3b 2축 parametric (plan §12.2):
+    orientation     : 'vertical' | 'horizontal' — line/bar만 적용. donut/pie는 무시.
+                      'vertical'(default)이면 Chart.js options에 indexAxis 키 추가 X
+                      → Week 3a byte-identity 유지.
+    emphasis_index  : int | null — 4 sub_type 공통. null이면 색상 분기 X (Week 3a 동작 유지).
+                      값이면 해당 인덱스 brand-primary, 나머지는 desaturated.
+                      **시각 표현은 색상 강조 1개로 고정** (라벨 강조/explode 등은 Week 4 결과 후 결정).
+
+  start_angle / label_position / slice_explode 등 추가 axis는 본 파일에 미리 박지 X
+  (build-for-build 가드 #1). Week 4 distinct 검증 후 결정.
 -->
 <html lang="ko">
 <head>
@@ -173,6 +181,9 @@
     const Y_UNIT       = {{ y_unit       | tojson if y_unit else 'null' }};
     const Y_MIN        = {{ y_min        | tojson if y_min is not none else 'null' }};
     const Y_MAX        = {{ y_max        | tojson if y_max is not none else 'null' }};
+    // Week 3b parametric (plan §12.2)
+    const ORIENTATION  = {{ orientation  | tojson }};
+    const EMPHASIS_IDX = {{ emphasis_index | tojson if emphasis_index is not none else 'null' }};
 
     // 토큰 (CSS var를 JS에서 읽어 Chart.js에 주입)
     const css = getComputedStyle(document.documentElement);
@@ -187,8 +198,15 @@
       ? LABELS.map((l, i) => [l, SUB_LABELS[i]])
       : LABELS;
 
+    // Week 3b 색상 강조: EMPHASIS_IDX=null이면 단일 COLOR_PRIMARY (Week 3a path = byte-identity).
+    // 값이면 array — 강조 인덱스만 brand, 나머지는 neutral-500.
+    const pointColors = EMPHASIS_IDX === null
+      ? COLOR_PRIMARY
+      : VALUES.map((_, i) => i === EMPHASIS_IDX ? COLOR_PRIMARY : COLOR_AXIS);
+
     // 모든 포인트 위에 라벨 그리는 custom plugin (chartjs-plugin-datalabels 의존성 회피)
     // v1.3 폰트 위계 재조정: 강조 요소는 굵기/색으로 인지하므로 table 본문(40px)보다 작게.
+    // Week 3b: horizontal일 때 x/y getPixel 인자가 뒤집힘 (Chart.js indexAxis='y'면 x축=value).
     const datalabelsPlugin = {
       id: 'pointLabels',
       afterDatasetsDraw(chart) {
@@ -201,8 +219,9 @@
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
         data.datasets[0].data.forEach((v, i) => {
-          const px = x.getPixelForValue(i);
-          const py = y.getPixelForValue(v);
+          // vertical: x=index, y=value. horizontal: x=value, y=index.
+          const px = ORIENTATION === 'horizontal' ? x.getPixelForValue(v) : x.getPixelForValue(i);
+          const py = ORIENTATION === 'horizontal' ? y.getPixelForValue(i) : y.getPixelForValue(v);
           ctx.fillText(POINT_LABELS[i], px, py - 18);  // 폰트 비례 gap
         });
         ctx.restore();
@@ -210,6 +229,47 @@
     };
 
     // (yUnitPlugin 제거됨 — y unit은 canvas 밖 HTML 요소로 분리. ticks와 겹침 위험 해소.)
+
+    // Week 3b: options 객체를 변수로 분리해서 horizontal일 때만 indexAxis 키 추가.
+    // vertical(default) path는 키 추가 X → Week 3a Chart.js config와 동일 = byte-identity.
+    const chartOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,                 // headless 렌더 = 프레임 안정화
+      /* v1.3 재설계: yUnit이 canvas 밖 HTML로 분리됐으므로 left padding 원위치.
+       * top 80 (pointLabel 공간) / right 16 (offset:true와 합쳐 자연 inset) /
+       * left 16 (Chart.js가 ticks 폭 자동 계산) */
+      layout: { padding: { top: 80, right: 16, bottom: 8, left: 16 } },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: {
+          /* offset: true — 첫/마지막 데이터 포인트를 plot 가장자리에서 안쪽으로 inset.
+           * 첫 x 라벨이 y ticks와 겹치는 문제 + 마지막 라벨 잘림 동시 해결. */
+          offset: true,
+          grid: { display: false, drawBorder: false },
+          border: { display: false },
+          ticks: {
+            color: COLOR_AXIS,
+            /* 보조 정보 — 본문 cell(40px)보다 작게, 32→28 (caption-) */
+            font: { family: FONT_FAMILY, size: 28, weight: '400' },
+            padding: 12,
+          },
+        },
+        y: {
+          min: Y_MIN ?? undefined,
+          max: Y_MAX ?? undefined,
+          grid: { color: COLOR_GRID, drawTicks: false },
+          border: { display: false },
+          ticks: {
+            color: COLOR_AXIS,
+            font: { family: FONT_FAMILY, size: 28, weight: '400' },
+            padding: 20,    /* 16→20: y축 숫자가 plot 라인과 더 분리 */
+            maxTicksLimit: 6,
+          },
+        },
+      },
+    };
+    if (ORIENTATION === 'horizontal') chartOptions.indexAxis = 'y';
 
     new Chart(document.getElementById('chart'), {
       type: 'line',
@@ -221,49 +281,13 @@
           backgroundColor: COLOR_PRIMARY,
           borderWidth: 4,
           pointRadius: 8,
-          pointBackgroundColor: COLOR_PRIMARY,
-          pointBorderColor: COLOR_PRIMARY,
+          pointBackgroundColor: pointColors,
+          pointBorderColor: pointColors,
           pointHoverRadius: 8,
           tension: 0,                     // 시드는 직선 연결 (no smoothing)
         }],
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,                 // headless 렌더 = 프레임 안정화
-        /* v1.3 재설계: yUnit이 canvas 밖 HTML로 분리됐으므로 left padding 원위치.
-         * top 80 (pointLabel 공간) / right 16 (offset:true와 합쳐 자연 inset) /
-         * left 16 (Chart.js가 ticks 폭 자동 계산) */
-        layout: { padding: { top: 80, right: 16, bottom: 8, left: 16 } },
-        plugins: { legend: { display: false }, tooltip: { enabled: false } },
-        scales: {
-          x: {
-            /* offset: true — 첫/마지막 데이터 포인트를 plot 가장자리에서 안쪽으로 inset.
-             * 첫 x 라벨이 y ticks와 겹치는 문제 + 마지막 라벨 잘림 동시 해결. */
-            offset: true,
-            grid: { display: false, drawBorder: false },
-            border: { display: false },
-            ticks: {
-              color: COLOR_AXIS,
-              /* 보조 정보 — 본문 cell(40px)보다 작게, 32→28 (caption-) */
-              font: { family: FONT_FAMILY, size: 28, weight: '400' },
-              padding: 12,
-            },
-          },
-          y: {
-            min: Y_MIN ?? undefined,
-            max: Y_MAX ?? undefined,
-            grid: { color: COLOR_GRID, drawTicks: false },
-            border: { display: false },
-            ticks: {
-              color: COLOR_AXIS,
-              font: { family: FONT_FAMILY, size: 28, weight: '400' },
-              padding: 20,    /* 16→20: y축 숫자가 plot 라인과 더 분리 */
-              maxTicksLimit: 6,
-            },
-          },
-        },
-      },
+      options: chartOptions,
       plugins: [datalabelsPlugin],
     });
   {%- elif sub_type == 'bar' %}
@@ -273,20 +297,30 @@
     const POINT_LABELS = {{ point_labels | tojson }};
     const Y_MIN        = {{ y_min        | tojson if y_min is not none else 'null' }};
     const Y_MAX        = {{ y_max        | tojson if y_max is not none else 'null' }};
+    // Week 3b parametric (plan §12.2)
+    const ORIENTATION  = {{ orientation  | tojson }};
+    const EMPHASIS_IDX = {{ emphasis_index | tojson if emphasis_index is not none else 'null' }};
 
     const css = getComputedStyle(document.documentElement);
     const COLOR_PRIMARY  = css.getPropertyValue('--brand-primary').trim();
     const COLOR_AXIS     = css.getPropertyValue('--neutral-500').trim();
     const COLOR_GRID     = css.getPropertyValue('--neutral-200').trim();
     const COLOR_LABEL    = css.getPropertyValue('--neutral-900').trim();
+    const COLOR_MONO_4   = css.getPropertyValue('--chart-mono-4').trim();  // 강조 외 막대 톤 (light brand)
     const FONT_FAMILY    = css.getPropertyValue('--font-family').trim();
 
     const xLabels = SUB_LABELS
       ? LABELS.map((l, i) => [l, SUB_LABELS[i]])
       : LABELS;
 
-    // 막대 위 데이터 라벨 — bar 상단 (meta.y) 기준 -18px.
-    // line의 (x, y).getPixelForValue 대신 meta로 막대 픽셀 좌표 직접 사용.
+    // Week 3b 색상 강조: null이면 단일 COLOR_PRIMARY (Week 3a path = byte-identity).
+    // 값이면 array — 강조 인덱스만 brand, 나머지는 chart-mono-4 (옅은 brand 톤).
+    const barColors = EMPHASIS_IDX === null
+      ? COLOR_PRIMARY
+      : VALUES.map((_, i) => i === EMPHASIS_IDX ? COLOR_PRIMARY : COLOR_MONO_4);
+
+    // 막대 위 데이터 라벨 — bar 상단 (meta.y) 기준 -18px (vertical).
+    // Week 3b horizontal: 막대가 좌→우, 라벨은 막대 오른쪽 끝 외부 (bar.x + 18, bar.y) center.
     const datalabelsPlugin = {
       id: 'pointLabels',
       afterDatasetsDraw(chart) {
@@ -297,14 +331,59 @@
         ctx.fontFeatureSettings = '"tnum"';
         ctx.letterSpacing = '-0.01em';
         ctx.fillStyle = COLOR_LABEL;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        meta.data.forEach((bar, i) => {
-          ctx.fillText(POINT_LABELS[i], bar.x, bar.y - 18);
-        });
+        if (ORIENTATION === 'horizontal') {
+          // 가로 막대: 라벨을 막대 우측 외부에 그림
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          meta.data.forEach((bar, i) => {
+            ctx.fillText(POINT_LABELS[i], bar.x + 12, bar.y);
+          });
+        } else {
+          // 세로 막대: 라벨을 막대 상단 외부에 그림 (Week 3a 동작)
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          meta.data.forEach((bar, i) => {
+            ctx.fillText(POINT_LABELS[i], bar.x, bar.y - 18);
+          });
+        }
         ctx.restore();
       },
     };
+
+    // Week 3b: options 객체를 변수로 분리, horizontal일 때만 indexAxis 키 추가
+    // (Week 3a path = options에 indexAxis 키 없음 → Chart.js default 'x' → byte-identity).
+    const chartOptions = {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      layout: { padding: { top: 80, right: 16, bottom: 8, left: 16 } },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: {
+          grid: { display: false, drawBorder: false },
+          border: { display: false },
+          ticks: {
+            color: COLOR_AXIS,
+            font: { family: FONT_FAMILY, size: 28, weight: '400' },
+            padding: 12,
+          },
+        },
+        y: {
+          beginAtZero: true,         // bar는 0 baseline이 정직 (line과 다른 점)
+          min: Y_MIN ?? undefined,
+          max: Y_MAX ?? undefined,
+          grid: { color: COLOR_GRID, drawTicks: false },
+          border: { display: false },
+          ticks: {
+            color: COLOR_AXIS,
+            font: { family: FONT_FAMILY, size: 28, weight: '400' },
+            padding: 20,
+            maxTicksLimit: 6,
+          },
+        },
+      },
+    };
+    if (ORIENTATION === 'horizontal') chartOptions.indexAxis = 'y';
 
     new Chart(document.getElementById('chart'), {
       type: 'bar',
@@ -312,47 +391,19 @@
         labels: xLabels,
         datasets: [{
           data: VALUES,
-          backgroundColor: COLOR_PRIMARY,
+          backgroundColor: barColors,
           borderRadius: 8,           // 상단 둥근 모서리
           borderSkipped: false,      // 하단도 radius 적용 X (시각 안정)
           barPercentage: 0.6,        // 카테고리 안 막대 폭 (60% — 여백 확보)
           categoryPercentage: 0.85,
         }],
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        animation: false,
-        layout: { padding: { top: 80, right: 16, bottom: 8, left: 16 } },
-        plugins: { legend: { display: false }, tooltip: { enabled: false } },
-        scales: {
-          x: {
-            grid: { display: false, drawBorder: false },
-            border: { display: false },
-            ticks: {
-              color: COLOR_AXIS,
-              font: { family: FONT_FAMILY, size: 28, weight: '400' },
-              padding: 12,
-            },
-          },
-          y: {
-            beginAtZero: true,         // bar는 0 baseline이 정직 (line과 다른 점)
-            min: Y_MIN ?? undefined,
-            max: Y_MAX ?? undefined,
-            grid: { color: COLOR_GRID, drawTicks: false },
-            border: { display: false },
-            ticks: {
-              color: COLOR_AXIS,
-              font: { family: FONT_FAMILY, size: 28, weight: '400' },
-              padding: 20,
-              maxTicksLimit: 6,
-            },
-          },
-        },
-      },
+      options: chartOptions,
       plugins: [datalabelsPlugin],
     });
   {%- else %}
+    // Week 3b: emphasis는 Python에서 colors 배열에 미리 반영 (legend swatch와 slice 색이 동일하게 일치).
+    // orientation은 원형 DOM이라 무시. legend swatch는 위 HTML loop가 같은 colors 사용.
     const LABELS = {{ labels | tojson }};
     const VALUES = {{ values | tojson }};
     const COLORS = {{ colors | tojson }};
