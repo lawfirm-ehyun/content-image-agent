@@ -211,11 +211,30 @@ def _assign_colors(labels: list[str]) -> list[str]:
     return colors
 
 
+# Week 3b 색상 강조 (plan §12.2) — donut/pie용. brand-primary는 chart_mono-2.
+_EMPHASIS_BRAND = "#a91c51"  # = _CHART_MONO_COLORS[1] = --brand-primary
+
+
+def _apply_emphasis_donut(colors: list[str], emphasis_index: int | None) -> list[str]:
+    """donut/pie 색상 강조 — emphasis_index slice만 brand-primary, 나머지는 chart_mono_other (neutral).
+
+    None이면 _assign_colors() 결과 그대로 반환 (Week 3a path = byte-identity).
+    legend swatch와 chart slice가 같은 colors 배열을 공유하므로 시각 일치 보장.
+    """
+    if emphasis_index is None:
+        return colors
+    return [
+        _EMPHASIS_BRAND if i == emphasis_index else _CHART_MONO_OTHER
+        for i in range(len(colors))
+    ]
+
+
 # === Week 3a (plan §12.2) — ChartSpec 단일 스키마 + master_chart 통합 path ======
 # 옛 ChartLineData/ChartDonutData/validate_chart_line/donut 는 ChartSpec path에서
 # 형식 검증 재사용. 외부에서 직접 쓰지 X.
 
 ChartSubType = Literal["line", "bar", "donut", "pie"]
+ChartOrientation = Literal["vertical", "horizontal"]
 
 
 @dataclass(frozen=True)
@@ -228,8 +247,12 @@ class ChartSpec:
       - donut/pie: title/labels/values 필수. point_labels None이면 raw value 표시.
                    sub_labels/y_unit/y_min/y_max 사용 X.
 
-    Week 3b+ 손잡이(orientation/emphasis_index)는 본 dataclass에 미리 박지 X
-    (build-for-build 가드 #1). v1.6.4 byte-identity만이 현재 합격선.
+    Week 3b (plan §12.2) — 2축 parametric 추가:
+      - orientation: 'vertical'(default) | 'horizontal'. **bar/line만** 의미 있음.
+                     donut/pie는 원형 DOM이라 무시 (값 받아도 적용 X).
+      - emphasis_index: int | None. **4 sub_type 공통.** None = 강조 없음 (Week 3a 동작).
+                        값이면 해당 인덱스만 brand-primary, 나머지는 desaturated.
+                        시각 표현은 **색상 강조 1개**로 고정 (라벨 강조/explode 등은 Week 4 후).
     """
 
     sub_type: ChartSubType
@@ -244,6 +267,9 @@ class ChartSpec:
     y_max: float | None = None
     # 공통
     source: str | None = None
+    # Week 3b parametric — default = Week 3a byte-identity 동작
+    orientation: ChartOrientation = "vertical"
+    emphasis_index: int | None = None
 
 
 def _spec_to_line_bar(spec: ChartSpec) -> ChartLineData:
@@ -292,12 +318,48 @@ def _spec_to_donut(spec: ChartSpec) -> ChartDonutData:
     )
 
 
+def _validate_parametric(spec: ChartSpec) -> None:
+    """Week 3b parametric 필드 검증 — orientation/emphasis_index 경계.
+
+    - orientation: donut/pie에 'horizontal' 지정해도 무시 (raise X, 경고만).
+    - emphasis_index: 0 ≤ i < len(values). 범위 밖이면 raise.
+    """
+    if spec.sub_type in ("donut", "pie") and spec.orientation != "vertical":
+        # default 외 값을 줘도 master_chart는 donut/pie 분기에서 적용 안 함.
+        # data error는 아니므로 경고만.
+        logger.warning(
+            "ChartSpec sub_type=%s에 orientation=%r 지정 — donut/pie 원형 DOM이라 무시됨.",
+            spec.sub_type, spec.orientation,
+        )
+    if spec.emphasis_index is not None:
+        if not (0 <= spec.emphasis_index < len(spec.values)):
+            raise ChartDataError(
+                f"emphasis_index={spec.emphasis_index}은 values 길이 {len(spec.values)} 범위 밖"
+            )
+
+
 def validate_chart(spec: ChartSpec) -> ChartSpec:
     """ChartSpec 형식 검증 + line/bar의 라벨 자동 줄바꿈. sub_type별 분기."""
+    _validate_parametric(spec)
     if spec.sub_type in ("line", "bar"):
         line = _spec_to_line_bar(spec)
         line = validate_chart_line(line)
-        return _line_bar_to_spec(line, spec.sub_type)
+        # Week 3b: validate_chart_line이 sub_labels 줄바꿈으로 새 인스턴스를 만들 수 있으므로
+        # parametric 필드를 함께 복원.
+        return ChartSpec(
+            sub_type=spec.sub_type,
+            title=line.title,
+            labels=line.labels,
+            values=line.values,
+            point_labels=line.point_labels,
+            sub_labels=line.sub_labels,
+            y_unit=line.y_unit,
+            y_min=line.y_min,
+            y_max=line.y_max,
+            source=line.source,
+            orientation=spec.orientation,
+            emphasis_index=spec.emphasis_index,
+        )
     if spec.sub_type in ("donut", "pie"):
         validate_chart_donut(_spec_to_donut(spec))
         return spec
@@ -327,9 +389,16 @@ async def render_chart(
         y_unit=spec.y_unit,
         y_min=spec.y_min,
         y_max=spec.y_max,
+        # Week 3b parametric — default(vertical, None)은 master_chart에서 Chart.js config에
+        # 키 추가 X path로 분기되어 byte-identity 유지.
+        orientation=spec.orientation,
+        emphasis_index=spec.emphasis_index,
     )
     if spec.sub_type in ("donut", "pie"):
-        variables["colors"] = _assign_colors(spec.labels)
+        # Week 3b: emphasis_index가 None이면 _assign_colors 그대로 (byte-identity).
+        # 값이면 emphasis slice = brand-primary, 나머지 = chart_mono_other.
+        colors = _assign_colors(spec.labels)
+        variables["colors"] = _apply_emphasis_donut(colors, spec.emphasis_index)
         variables["cutout"] = "55%" if spec.sub_type == "donut" else 0
     else:
         # line/bar 분기에서 사용 X — StrictUndefined 회피용 None

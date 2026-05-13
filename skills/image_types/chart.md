@@ -29,6 +29,8 @@ default — `width: 1200px` 고정, `height: auto`.
 - `y_unit` : str | None ("(%)", "(억 원)" 등)
 - `source` : str | None (통계는 표기 권장)
 - `y_min` / `y_max` : float | None
+- `orientation` : `'vertical'`(default) | `'horizontal'` — Week 3b parametric.
+- `emphasis_index` : int | None (default None) — 강조할 포인트/막대 인덱스. None이면 강조 X.
 
 ### line vs bar 선택
 - **line**: 본문에 연속된 시계열 (연도/월/분기 → 값). x축이 순서 의미 있음.
@@ -41,12 +43,21 @@ default — `width: 1200px` 고정, `height: auto`.
 - `values` : list[float] — slice 값 (Chart.js가 자동 % 환산). 음수/합 0 X.
 - `point_labels` : list[str] | None — slice 표시 텍스트 (예: "1,240건"). None이면 raw value 표시.
 - `source` : str | None.
-- (donut/pie 분기에선 `sub_labels` / `y_unit` / `y_min` / `y_max` 사용 X — None 그대로 둘 것.)
+- `emphasis_index` : int | None (default None) — 강조할 slice 인덱스. None이면 강조 X.
+- (donut/pie 분기에선 `sub_labels` / `y_unit` / `y_min` / `y_max` / `orientation` 사용 X — None/default 둘 것. orientation은 원형 DOM이라 무의미.)
 
 ### donut vs pie 선택
 - **donut**: 중앙 hole 있음 — 더 현대적 톤. 기본 권장.
 - **pie**: 중앙 채움 — 전통적, 슬라이스 비교 더 명확.
 - 본문이 "구성비" 강조 → donut. "비율 자체"가 중요 → pie. 보통 donut으로 가도 OK.
+
+### orientation 선택 (line/bar만 — Week 3b)
+- `vertical`(default): 거의 모든 경우. 시계열(연도/월) line·bar 표준.
+- `horizontal`: 라벨이 길거나(긴 카테고리명) 6+개 카테고리로 vertical에서 라벨 잘림 시.
+
+### emphasis_index 선택 (4 sub_type 공통 — Week 3b)
+- 본문이 특정 시점/카테고리/슬라이스를 명시 강조 (예: "최근 1년", "가장 큰 비중")할 때 그 인덱스.
+- 본문에 강조 신호 없으면 **None 유지** (모든 포인트 동등). 임의 강조 X (절대 룰 #1).
 
 ### 분포 vs 비교 선택 (donut/pie vs bar)
 - **donut/pie**: 전체 합 = 100% (구성비 시각화). 카테고리 5-6개 이하.
