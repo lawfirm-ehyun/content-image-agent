@@ -228,6 +228,9 @@ v1.6.4까지 `tools/llm/_common.py`가 bundled `claude.exe` subprocess 호출 (�
 |---|---|
 | distinct 2/3+ | Week 5-6 line/donut/pie 동일 parametric 작업 |
 | distinct 1/3 이하 | parametric vocab 확장 X. **composition primitive 검토** (grid cell + callout slot + multi-panel). 25장 레퍼런스의 50-70%는 parametric이 아니라 composition 결정에서 옴 |
+| **실제 결과 (2026-05-13, 4fd5aa8/1ece541)**: distinct **3/3 PASS** + 회귀 **4/4 SHA byte-identical**. | **§12.2 "이후" path 진입 (pause)** — Week 5-6 line/donut/pie parametric 즉시 진입 X. production 사용 패턴 누적 대기 (§12.8). |
+
+> 분기 결정 배경 (2026-05-13): Week 4 distinct 검증은 같은 bar 데이터셋의 변형이 시각 분기를 만들어내는지만 검증 — sub_type별 (line/donut/pie) 데이터셋에서 emphasis가 의미 있는 시각 효과를 내는지는 별도 문제. 또한 LLM이 본문에서 orientation/emphasis_index를 얼마나 자주, 적절히 결정하는지는 spike 스크립트로 알 수 없음. parametric vocab 확장 전에 실사용 데이터를 보고 결정 — 80% plan으로 출발이 100% plan보다 빠름 (v1.7.3 freeze 정신 연속).
 
 ### 12.6 subagent 분리 기준 (Week 1-2 가이드)
 
@@ -242,9 +245,35 @@ claude-agent-sdk subagent는 자체 context 격리됨. 따라서:
 
 - ~~claude-agent-sdk 정확 버전 (0.2.111+ 중 어디 고정할지)~~ → **0.1.77 고정 (2026-05-13)**. Opus 4.7 호출 OK + spike 4 checks + production N=3 모두 0.1.77로 통과. 0.2.111+ 업그레이드는 hooks/subagents 풀 도입 필요 시점에 재평가.
 - agent loop max iteration cap (비용 폭주 방지) — Week 3a+ agent loop 활성 시점에 결정
-- `master_chart` emphasis_index의 시각 표현 (색상 강조 / 라벨 강조 / 둘 다)
-- donut/pie 전용 axis 후보 (`start_angle` / `label_position` / `slice_explode` 등) — Week 4 결과 보고 Week 5+에 결정
+- `master_chart` emphasis_index의 시각 표현 (색상 강조 / 라벨 강조 / 둘 다) — **Week 3b/4 결과 (2026-05-13)**: 색상 강조 1개만 ship (line/bar 비강조 = neutral·옅은 mono / donut/pie 비강조 = mono-other). 라벨 강조·다중화는 §12.8 production 사용 패턴 누적 대기.
+- donut/pie 전용 axis 후보 (`start_angle` / `label_position` / `slice_explode` 등) — Week 4 결과 받음 (distinct 3/3 + 회귀 0/4), **§12.8 pause 채택**. 누적 대기.
+- bar/line `orientation`의 3번째 후보 (예: `diagonal` / 면적 chart 회전 등) — 같은 §12.8 대기 (현재 vertical/horizontal 2개로 충분 여부 누적 검증).
 - ~~`tools/llm/models.py:CLAUDE_EXE` dead reference cleanup 시점~~ → **완료 (2026-05-13)**. 변수 제거 + `PROJECT_CONTEXT.md` §3 동기화.
+
+### 12.8 §12.2 "이후" pause — Week 5-6 진입 조건 (2026-05-13 신설)
+
+Week 4 distinct 3/3 + 회귀 0/4 PASS 후에도 parametric vocab 확장을 **즉시 진입 X**. 진입 조건 충족 후 재개:
+
+**진입 트리거 (둘 중 하나라도 충족):**
+1. **production page N ≥ 10** 처리 + `ChartSpec.emphasis_index != None` 사용률이 ≥ 30% (LLM이 본문에서 실제로 강조 신호를 자주 추출하는지 = parametric 손잡이가 production에서 의미 있는지 신호)
+2. **본문 패턴이 새 axis 필요성을 명시적으로 신호** — 예: 시계열 강조 위치가 단일 인덱스로 부족 (구간 강조), donut/pie에서 slice 분리 강조 요구, line chart `area fill` 시각 톤 요구
+
+> N=10은 cold-start 기준. 실제 threshold는 누적 후 패턴 보고 재조정. *80% plan 정신* — 정확한 cutoff는 데이터 보고.
+
+**누적 메커니즘 (별 인프라 X):**
+- 이미 `token-ledger.ndjson` 1줄/슬롯 기록 중 (chart 비용 metadata)
+- Week 5-6 진입 트리거 검토 시점에 ledger를 grep — `ChartSpec` 결정값(sub_type/orientation/emphasis_index)이 같이 emit되어 있으면 즉시 집계, 아니면 그 시점에 `orchestrator._render_slot`의 chart 분기에서 ledger emit 1줄 확장 (그래도 새 시스템 X — 기존 ledger 확장).
+- **현재(2026-05-13) 코드 변경 0**: 진입 트리거 검토 시점에 결정.
+
+**진입 후 (= 미래 Week 5-6) 작업 윤곽 (확정 X, 메모만):**
+- line/donut/pie 각 sub_type 단일 series 데이터셋으로 emphasis 시각 분기 검증 (bar Week 3b/4 패턴 답습)
+- §12.7 미결정 axis 후보 중 production 신호가 가장 강한 1개부터 (3개 다 미리 박지 X — 가드 #1 정신 연속)
+- composition primitive 검토는 distinct 미달 시그널 없으면 별 트랙으로 보류
+
+**pause 깨는 신호 (긴급 진입):**
+- production 본문에서 chart 슬롯이 시각 단조로움으로 사용자 피드백 발생 (Week 4 distinct가 lab에서 PASS여도 production에서 약하면 거기서 끊고 진입)
+- LLM이 본문 강조를 못 잡거나 잘못 잡아 chart 폐기율 상승 (orientation/emphasis_index 결정 품질 문제)
+- 위 신호 발견 시 N 조건 충족 전이라도 Week 5-6 진입 검토
 
 ## 13. SEO + a11y 메타데이터 (alt_text + filename_slug) — v1.7.2-plan
 
@@ -310,6 +339,8 @@ claude-agent-sdk subagent는 자체 context 격리됨. 따라서:
 ---
 
 ## Changelog
+
+- **v1.7.4-plan** (2026-05-13): §12.2 Week 4 종결 + §12.2 "이후" path 진입 (pause). **plan only — 코드는 4fd5aa8/1ece541에서 이미 ship.** 배경: Week 4 distinct 3/3 + 회귀 0/4 모두 PASS (lab 검증 OK)이나 (a) sub_type별 production 데이터셋에서 emphasis 의미 있는지는 별 검증, (b) LLM이 본문에서 orientation/emphasis_index를 실제로 자주·적절히 결정하는지는 spike로 알 수 없음. parametric vocab 즉시 확장 X, production 사용 패턴 누적 대기. **갱신 위치**: §12.5 표에 실제 결과 row 추가 + §12.7 미결정 항목 (emphasis 다중화 / donut·pie axis 후보 / orientation 3번째) status 갱신 + 새 §12.8 — Week 5-6 진입 트리거 (N≥10 + emphasis 사용률 ≥30% OR 본문 패턴 신호) + 누적 메커니즘 (기존 token-ledger 확장, 새 시스템 X) + 긴급 진입 신호 명시. *80% plan 정신 (v1.7.3 freeze) 연속*. 다음 plan 변경은 production page 누적 후.
 
 - **v1.7.3-plan** (2026-05-12): §12.4 Week 0 spike fallback 3경로 1줄 enumerate (Sonnet 4.6 / 옵션 B skills 이동 / claude.exe + SDK 하이브리드). **Plan freeze 선언** — mid-checkpoint decision gate, falsifiable Week 4 기준, §12.5 composition phase reframing 등 후속 보강은 Week 0 spike 실측 데이터 받기 전까지 보류. 배경: plan-fixing이 회피 행동(procrastination dressed as rigor)으로 전환되는 패턴 감지. 80% plan으로 출발이 100% plan보다 빠름. 다음 plan 변경은 1주 코드 작업 후 재검토.
 
