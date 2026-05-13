@@ -1,0 +1,384 @@
+<!doctype html>
+<!--
+  master_chart.html — Week 3a (plan §12.2 v1.7.3) chart 4 sub-type 단일 통합 마스터.
+
+  통합 대상 (v1.6.4 → 본 파일): chart_line.html / chart_bar.html / chart_donut.html(+pie).
+  DOM 본질이 동일(canvas + Chart.js)하므로 §12.3 통합 허용.
+  byte-identity 회귀 가드: tests/fixtures/v1_6_4_chart_baseline/*.png (SHA256 lock at 308d98e).
+
+  Variables (Jinja2):
+    sub_type     : 'line' | 'bar' | 'donut' | 'pie' — 분기 기준.
+    title        : str
+    labels       : list[str]
+    values       : list[number]
+    point_labels : list[str] | None — line/bar는 필수, donut/pie는 None이면 raw value 표시
+    source       : str | None
+
+    # line/bar 전용:
+    sub_labels   : list[str] | None — x축 2행 라벨
+    y_unit       : str | None
+    y_min, y_max : number | None
+
+    # donut/pie 전용:
+    colors       : list[str] — _assign_colors() 매핑 결과
+    cutout       : str | int — donut '55%' / pie 0
+
+  Week 3b+ 손잡이(orientation/emphasis_index/start_angle 등)는 본 파일에 미리 박지 X.
+  지금은 v1.6.4 byte-identity가 유일한 합격선.
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <link rel="stylesheet" href="_base.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
+  <style>
+  {%- if sub_type in ('line', 'bar') %}
+    .card {
+      background: var(--neutral-100);     /* 시드 패턴: 카드 전체 light-gray 배경 */
+      gap: var(--sp-lg);
+    }
+    /* y unit ("(건)" 등) — canvas 밖 HTML 요소로 분리.
+     * 이전엔 yUnitPlugin이 canvas 안에 그렸는데 y축 ticks 영역과 겹침 발생 → HTML로 분리. */
+    .chart-y-unit {
+      font-size: var(--font-caption);     /* 32px */
+      color: var(--neutral-500);
+      font-weight: var(--fw-regular);
+      margin-bottom: calc(-1 * var(--sp-md));  /* chart 가까이 붙임 */
+    }
+    .chart-wrap {
+      flex: 1;
+      position: relative;
+      min-height: 0;                      /* flex 자식 canvas 높이 계산 안정화 */
+    }
+    .footnote {
+      /* v1.4: footnote 통일 — 32px caption + neutral-500 (7개 카드 공통) */
+      font-size: var(--font-caption);
+      color: var(--neutral-500);
+      line-height: var(--lh-snug);
+    }
+  {%- else %}
+    .card {
+      /* v1.4: chart 카테고리 배경 통일 — chart_line/bar와 같은 neutral-100 토스피드 톤. */
+      background: var(--neutral-100);
+      gap: var(--sp-xl);
+    }
+
+    /* chart + 범례 좌우 분할 */
+    .chart-with-legend {
+      display: flex;
+      gap: var(--sp-2xl);
+      align-items: center;
+      flex: 1;
+      min-height: 0;
+    }
+    .chart-wrap {
+      width: 480px;
+      height: 480px;
+      flex-shrink: 0;
+      position: relative;
+    }
+
+    .legend {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: var(--sp-lg);
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .legend__item {
+      display: flex;
+      align-items: center;
+      gap: var(--sp-md);
+    }
+    .legend__swatch {
+      width: 28px;
+      height: 28px;
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+    }
+    .legend__label {
+      flex: 1;
+      font-size: var(--font-body-sm);   /* 40px */
+      color: var(--neutral-800);
+      font-weight: var(--fw-medium);
+      line-height: var(--lh-snug);
+    }
+    .legend__value {
+      font-size: var(--font-body-sm);
+      color: var(--neutral-500);
+      font-weight: var(--fw-regular);
+      font-feature-settings: "tnum";
+    }
+
+    .footnote {
+      /* v1.4: footnote 통일 — 32px caption + neutral-500 (7개 카드 공통) */
+      font-size: var(--font-caption);
+      color: var(--neutral-500);
+      line-height: var(--lh-snug);
+    }
+  {%- endif %}
+  </style>
+</head>
+<body>
+  <div class="card card--chart">
+    <h2 class="card__title">{{ title }}</h2>
+  {%- if sub_type in ('line', 'bar') %}
+
+    {% if y_unit %}
+      <p class="chart-y-unit">{{ y_unit }}</p>
+    {% endif %}
+
+    <div class="chart-wrap">
+      <canvas id="chart"></canvas>
+    </div>
+
+    {% if source %}
+      <p class="footnote">{{ source }}</p>
+    {% endif %}
+  {%- else %}
+
+    <div class="chart-with-legend">
+      <div class="chart-wrap">
+        <canvas id="chart"></canvas>
+      </div>
+
+      <ul class="legend">
+        {% for i in range(labels|length) %}
+          <li class="legend__item">
+            <span class="legend__swatch" style="background: {{ colors[i] }};"></span>
+            <span class="legend__label">{{ labels[i] }}</span>
+            <span class="legend__value">
+              {%- if point_labels -%}{{ point_labels[i] }}{%- else -%}{{ values[i] }}{%- endif -%}
+            </span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    {% if source %}
+      <p class="footnote">{{ source }}</p>
+    {% endif %}
+  {%- endif %}
+  </div>
+
+  <script>
+  {%- if sub_type == 'line' %}
+    // 데이터 (Jinja2가 안전하게 JSON으로 직렬화하도록 |tojson 사용)
+    const LABELS       = {{ labels       | tojson }};
+    const SUB_LABELS   = {{ sub_labels   | tojson if sub_labels else 'null' }};
+    const VALUES       = {{ values       | tojson }};
+    const POINT_LABELS = {{ point_labels | tojson }};
+    const Y_UNIT       = {{ y_unit       | tojson if y_unit else 'null' }};
+    const Y_MIN        = {{ y_min        | tojson if y_min is not none else 'null' }};
+    const Y_MAX        = {{ y_max        | tojson if y_max is not none else 'null' }};
+
+    // 토큰 (CSS var를 JS에서 읽어 Chart.js에 주입)
+    const css = getComputedStyle(document.documentElement);
+    const COLOR_PRIMARY  = css.getPropertyValue('--brand-primary').trim();
+    const COLOR_AXIS     = css.getPropertyValue('--neutral-500').trim();
+    const COLOR_GRID     = css.getPropertyValue('--neutral-200').trim();
+    const COLOR_LABEL    = css.getPropertyValue('--neutral-900').trim();
+    const FONT_FAMILY    = css.getPropertyValue('--font-family').trim();
+
+    // x축 2행 라벨: ["2010", "밴쿠버"] 형태로 배열 반환 → Chart.js가 자동으로 줄바꿈
+    const xLabels = SUB_LABELS
+      ? LABELS.map((l, i) => [l, SUB_LABELS[i]])
+      : LABELS;
+
+    // 모든 포인트 위에 라벨 그리는 custom plugin (chartjs-plugin-datalabels 의존성 회피)
+    // v1.3 폰트 위계 재조정: 강조 요소는 굵기/색으로 인지하므로 table 본문(40px)보다 작게.
+    const datalabelsPlugin = {
+      id: 'pointLabels',
+      afterDatasetsDraw(chart) {
+        const { ctx, data, scales: { x, y } } = chart;
+        ctx.save();
+        ctx.font = `700 32px ${FONT_FAMILY}`;
+        ctx.fontFeatureSettings = '"tnum"';   // 숫자 등폭 — "44.6" / "638억" 정렬 안정
+        ctx.letterSpacing = '-0.01em';        // 한글 가독성 (Pretendard 권장 자간)
+        ctx.fillStyle = COLOR_LABEL;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        data.datasets[0].data.forEach((v, i) => {
+          const px = x.getPixelForValue(i);
+          const py = y.getPixelForValue(v);
+          ctx.fillText(POINT_LABELS[i], px, py - 18);  // 폰트 비례 gap
+        });
+        ctx.restore();
+      },
+    };
+
+    // (yUnitPlugin 제거됨 — y unit은 canvas 밖 HTML 요소로 분리. ticks와 겹침 위험 해소.)
+
+    new Chart(document.getElementById('chart'), {
+      type: 'line',
+      data: {
+        labels: xLabels,
+        datasets: [{
+          data: VALUES,
+          borderColor: COLOR_PRIMARY,
+          backgroundColor: COLOR_PRIMARY,
+          borderWidth: 4,
+          pointRadius: 8,
+          pointBackgroundColor: COLOR_PRIMARY,
+          pointBorderColor: COLOR_PRIMARY,
+          pointHoverRadius: 8,
+          tension: 0,                     // 시드는 직선 연결 (no smoothing)
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,                 // headless 렌더 = 프레임 안정화
+        /* v1.3 재설계: yUnit이 canvas 밖 HTML로 분리됐으므로 left padding 원위치.
+         * top 80 (pointLabel 공간) / right 16 (offset:true와 합쳐 자연 inset) /
+         * left 16 (Chart.js가 ticks 폭 자동 계산) */
+        layout: { padding: { top: 80, right: 16, bottom: 8, left: 16 } },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: {
+            /* offset: true — 첫/마지막 데이터 포인트를 plot 가장자리에서 안쪽으로 inset.
+             * 첫 x 라벨이 y ticks와 겹치는 문제 + 마지막 라벨 잘림 동시 해결. */
+            offset: true,
+            grid: { display: false, drawBorder: false },
+            border: { display: false },
+            ticks: {
+              color: COLOR_AXIS,
+              /* 보조 정보 — 본문 cell(40px)보다 작게, 32→28 (caption-) */
+              font: { family: FONT_FAMILY, size: 28, weight: '400' },
+              padding: 12,
+            },
+          },
+          y: {
+            min: Y_MIN ?? undefined,
+            max: Y_MAX ?? undefined,
+            grid: { color: COLOR_GRID, drawTicks: false },
+            border: { display: false },
+            ticks: {
+              color: COLOR_AXIS,
+              font: { family: FONT_FAMILY, size: 28, weight: '400' },
+              padding: 20,    /* 16→20: y축 숫자가 plot 라인과 더 분리 */
+              maxTicksLimit: 6,
+            },
+          },
+        },
+      },
+      plugins: [datalabelsPlugin],
+    });
+  {%- elif sub_type == 'bar' %}
+    const LABELS       = {{ labels       | tojson }};
+    const SUB_LABELS   = {{ sub_labels   | tojson if sub_labels else 'null' }};
+    const VALUES       = {{ values       | tojson }};
+    const POINT_LABELS = {{ point_labels | tojson }};
+    const Y_MIN        = {{ y_min        | tojson if y_min is not none else 'null' }};
+    const Y_MAX        = {{ y_max        | tojson if y_max is not none else 'null' }};
+
+    const css = getComputedStyle(document.documentElement);
+    const COLOR_PRIMARY  = css.getPropertyValue('--brand-primary').trim();
+    const COLOR_AXIS     = css.getPropertyValue('--neutral-500').trim();
+    const COLOR_GRID     = css.getPropertyValue('--neutral-200').trim();
+    const COLOR_LABEL    = css.getPropertyValue('--neutral-900').trim();
+    const FONT_FAMILY    = css.getPropertyValue('--font-family').trim();
+
+    const xLabels = SUB_LABELS
+      ? LABELS.map((l, i) => [l, SUB_LABELS[i]])
+      : LABELS;
+
+    // 막대 위 데이터 라벨 — bar 상단 (meta.y) 기준 -18px.
+    // line의 (x, y).getPixelForValue 대신 meta로 막대 픽셀 좌표 직접 사용.
+    const datalabelsPlugin = {
+      id: 'pointLabels',
+      afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        const meta = chart.getDatasetMeta(0);
+        ctx.save();
+        ctx.font = `700 32px ${FONT_FAMILY}`;
+        ctx.fontFeatureSettings = '"tnum"';
+        ctx.letterSpacing = '-0.01em';
+        ctx.fillStyle = COLOR_LABEL;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        meta.data.forEach((bar, i) => {
+          ctx.fillText(POINT_LABELS[i], bar.x, bar.y - 18);
+        });
+        ctx.restore();
+      },
+    };
+
+    new Chart(document.getElementById('chart'), {
+      type: 'bar',
+      data: {
+        labels: xLabels,
+        datasets: [{
+          data: VALUES,
+          backgroundColor: COLOR_PRIMARY,
+          borderRadius: 8,           // 상단 둥근 모서리
+          borderSkipped: false,      // 하단도 radius 적용 X (시각 안정)
+          barPercentage: 0.6,        // 카테고리 안 막대 폭 (60% — 여백 확보)
+          categoryPercentage: 0.85,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        animation: false,
+        layout: { padding: { top: 80, right: 16, bottom: 8, left: 16 } },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+        scales: {
+          x: {
+            grid: { display: false, drawBorder: false },
+            border: { display: false },
+            ticks: {
+              color: COLOR_AXIS,
+              font: { family: FONT_FAMILY, size: 28, weight: '400' },
+              padding: 12,
+            },
+          },
+          y: {
+            beginAtZero: true,         // bar는 0 baseline이 정직 (line과 다른 점)
+            min: Y_MIN ?? undefined,
+            max: Y_MAX ?? undefined,
+            grid: { color: COLOR_GRID, drawTicks: false },
+            border: { display: false },
+            ticks: {
+              color: COLOR_AXIS,
+              font: { family: FONT_FAMILY, size: 28, weight: '400' },
+              padding: 20,
+              maxTicksLimit: 6,
+            },
+          },
+        },
+      },
+      plugins: [datalabelsPlugin],
+    });
+  {%- else %}
+    const LABELS = {{ labels | tojson }};
+    const VALUES = {{ values | tojson }};
+    const COLORS = {{ colors | tojson }};
+    const CUTOUT = {{ cutout | tojson }};
+
+    new Chart(document.getElementById('chart'), {
+      type: 'doughnut',
+      data: {
+        labels: LABELS,
+        datasets: [{
+          data: VALUES,
+          backgroundColor: COLORS,
+          borderWidth: 0,                 // slice 사이 보더 없음 — 미니멀 톤
+          spacing: 0,
+        }],
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        cutout: CUTOUT,                   // donut "55%" / pie 0
+        animation: false,
+        layout: { padding: 0 },
+        plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      },
+    });
+  {%- endif %}
+  </script>
+</body>
+</html>

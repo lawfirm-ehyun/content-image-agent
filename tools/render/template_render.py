@@ -73,7 +73,9 @@ async def render_template(
     # corruption 방지. 실패하면 빈 캔버스(>1KB 통과)나 fallback sans-serif 캡처라
     # 사후 검증으로 못 잡음.
     checks = ["document.fonts.check('700 30px Pretendard')"]
-    if template_name.startswith("chart"):
+    if template_name.startswith("chart") or template_name == "master_chart":
+        # master_chart는 Week 3a 통합 (plan §12.2) — 옛 chart_*.html 4종을 대체.
+        # 다음 cleanup 시 옛 chart_* prefix를 제거하고 master_chart 단일로 정리.
         checks.append("window.Chart != null")
     if template_name == "timeline":
         # lucide.createIcons() 완료 마커까지 함께 확인 — SVG 변환 전 캡처 방지.

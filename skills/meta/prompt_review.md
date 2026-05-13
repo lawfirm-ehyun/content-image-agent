@@ -1,7 +1,7 @@
 # Prompt/Input Review
 
 생성 단계 직전, 입력(template variables)을 셀프 리뷰한다.
-**형식 검증은 코드(`chart_render.validate_chart_line`)가 담당**, 본 스킬은 사실 정확성 + 본문 중복 + §23 검사.
+**형식 검증은 코드(`chart_render.validate_chart`)가 담당**, 본 스킬은 사실 정확성 + 본문 중복 + §23 검사.
 
 ## 사실 정확성 검증 (CRITICAL — 절대 룰 #1) — v1.3 분리
 

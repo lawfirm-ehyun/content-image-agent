@@ -7,13 +7,15 @@
   - 여기 (chart_render): 형식 검증 (길이 일치, 포인트 개수, 라벨 길이)
   - prompt_review (skills/meta): 본문 일치 검증 (숫자 1:1, 변호사법 §23)
 
-Phase 1: line. Phase 2: bar 추가. donut/pie는 후속.
+Week 3a (plan §12.2 v1.7.3): 4 sub-type 통합. 외부 API는 `ChartSpec` + `render_chart` 단일.
+ChartLineData/ChartDonutData/validate_chart_line/donut은 ChartSpec path 내부 재사용 (외부 X).
 """
 from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 from tools.render.template_render import CardSize, render_template
 
@@ -137,98 +139,9 @@ def _split_label(label: str) -> tuple[str, str]:
     return label[:midpoint], label[midpoint:]
 
 
-async def render_chart_line(
-    data: ChartLineData,
-    out_path: Path,
-    size: str | CardSize = "default",
-) -> Path:
-    """chart_line 카드를 PNG로 렌더. 검증 통과한 데이터만 템플릿에 주입."""
-    d = validate_chart_line(data)
-    return await render_template(
-        "chart_line",
-        dict(
-            title=d.title,
-            y_unit=d.y_unit,
-            labels=d.labels,
-            sub_labels=d.sub_labels,
-            values=d.values,
-            point_labels=d.point_labels,
-            source=d.source,
-            y_min=d.y_min,
-            y_max=d.y_max,
-        ),
-        out_path,
-        size=size,
-    )
-
-
-# === bar sub-type (Phase 2) ===================================================
-# line과 데이터 shape 동일 (단일 계열 vertical bar). 검증 룰도 동일.
-# 별도 dataclass로 둬서 향후 bar-specific 필드(barThickness 등) 확장 여지 확보.
-
-
-@dataclass(frozen=True)
-class ChartBarData:
-    """chart_bar 템플릿 입력. ChartLineData와 동일 shape — 단일 계열 vertical bar.
-
-    카테고리 비교 데이터에 사용 (예: 연도별 건수, 지역별 비율).
-    fields 의미는 ChartLineData 참고.
-    """
-
-    title: str
-    labels: list[str]
-    values: list[float]
-    point_labels: list[str]
-    sub_labels: list[str] | None = None
-    y_unit: str | None = None
-    source: str | None = None
-    y_min: float | None = None
-    y_max: float | None = None
-
-
-def validate_chart_bar(d: ChartBarData) -> ChartBarData:
-    """chart_bar 검증. line과 룰 동일하므로 ChartLineData로 변환해 위임 후 다시 ChartBarData로."""
-    line = ChartLineData(
-        title=d.title, labels=d.labels, values=d.values,
-        point_labels=d.point_labels, sub_labels=d.sub_labels,
-        y_unit=d.y_unit, source=d.source, y_min=d.y_min, y_max=d.y_max,
-    )
-    line = validate_chart_line(line)
-    return ChartBarData(
-        title=line.title, labels=line.labels, values=line.values,
-        point_labels=line.point_labels, sub_labels=line.sub_labels,
-        y_unit=line.y_unit, source=line.source, y_min=line.y_min, y_max=line.y_max,
-    )
-
-
-async def render_chart_bar(
-    data: ChartBarData,
-    out_path: Path,
-    size: str | CardSize = "default",
-) -> Path:
-    """chart_bar 카드를 PNG로 렌더."""
-    d = validate_chart_bar(data)
-    return await render_template(
-        "chart_bar",
-        dict(
-            title=d.title,
-            y_unit=d.y_unit,
-            labels=d.labels,
-            sub_labels=d.sub_labels,
-            values=d.values,
-            point_labels=d.point_labels,
-            source=d.source,
-            y_min=d.y_min,
-            y_max=d.y_max,
-        ),
-        out_path,
-        size=size,
-    )
-
-
-# === donut / pie sub-type (Phase 2) ===========================================
+# === donut / pie sub-type — distribution slice 검증 + 색 매핑 =================
 # 분포 시각화 — slice별 비율. label + value 옆 범례 형식.
-# donut: 중앙 hole 있음 (cutout 50%) / pie: 채워짐 (cutout 0).
+# donut: 중앙 hole 있음 (cutout 55%) / pie: 채워짐 (cutout 0). master_chart Jinja 분기.
 # 컬러는 monochromatic chart-mono palette (brand wine-magenta 변형) — _base.css 토큰.
 
 # CSS 토큰 미러 — Jinja에 inline 전달용. _base.css와 1:1 동기.
@@ -298,36 +211,128 @@ def _assign_colors(labels: list[str]) -> list[str]:
     return colors
 
 
-async def render_chart_donut(
-    data: ChartDonutData,
-    out_path: Path,
-    size: str | CardSize = "default",
-    *,
-    cutout: str | int = "55%",
-) -> Path:
-    """chart_donut 카드를 PNG로 렌더. pie도 cutout=0으로 같은 템플릿 재사용."""
-    d = validate_chart_donut(data)
-    colors = _assign_colors(d.labels)
-    return await render_template(
-        "chart_donut",
-        dict(
-            title=d.title,
-            labels=d.labels,
-            values=d.values,
-            point_labels=d.point_labels,
-            colors=colors,
-            cutout=cutout,
-            source=d.source,
-        ),
-        out_path,
-        size=size,
+# === Week 3a (plan §12.2) — ChartSpec 단일 스키마 + master_chart 통합 path ======
+# 옛 ChartLineData/ChartDonutData/validate_chart_line/donut 는 ChartSpec path에서
+# 형식 검증 재사용. 외부에서 직접 쓰지 X.
+
+ChartSubType = Literal["line", "bar", "donut", "pie"]
+
+
+@dataclass(frozen=True)
+class ChartSpec:
+    """master_chart.html 입력 — 4 sub_type 통합 단일 스키마.
+
+    sub_type별 의미:
+      - line/bar: title/labels/values/point_labels 필수. sub_labels/y_unit/y_min/y_max 옵션.
+                  colors/cutout은 사용 X (None).
+      - donut/pie: title/labels/values 필수. point_labels None이면 raw value 표시.
+                   sub_labels/y_unit/y_min/y_max 사용 X.
+
+    Week 3b+ 손잡이(orientation/emphasis_index)는 본 dataclass에 미리 박지 X
+    (build-for-build 가드 #1). v1.6.4 byte-identity만이 현재 합격선.
+    """
+
+    sub_type: ChartSubType
+    title: str
+    labels: list[str]
+    values: list[float]
+    point_labels: list[str] | None = None
+    # line/bar 전용 —— donut/pie는 None 고정
+    sub_labels: list[str] | None = None
+    y_unit: str | None = None
+    y_min: float | None = None
+    y_max: float | None = None
+    # 공통
+    source: str | None = None
+
+
+def _spec_to_line_bar(spec: ChartSpec) -> ChartLineData:
+    """ChartSpec(line/bar) → ChartLineData (validate_chart_line 재사용 위해)."""
+    if spec.point_labels is None:
+        raise ChartDataError(
+            f"chart sub_type={spec.sub_type}은 point_labels 필수 (None 받음)"
+        )
+    return ChartLineData(
+        title=spec.title,
+        labels=spec.labels,
+        values=spec.values,
+        point_labels=spec.point_labels,
+        sub_labels=spec.sub_labels,
+        y_unit=spec.y_unit,
+        source=spec.source,
+        y_min=spec.y_min,
+        y_max=spec.y_max,
     )
 
 
-async def render_chart_pie(
-    data: ChartDonutData,
+def _line_bar_to_spec(d: ChartLineData, sub_type: ChartSubType) -> ChartSpec:
+    """validate 후 ChartLineData → ChartSpec (sub_labels 자동 줄바꿈 결과 반영)."""
+    return ChartSpec(
+        sub_type=sub_type,
+        title=d.title,
+        labels=d.labels,
+        values=d.values,
+        point_labels=d.point_labels,
+        sub_labels=d.sub_labels,
+        y_unit=d.y_unit,
+        source=d.source,
+        y_min=d.y_min,
+        y_max=d.y_max,
+    )
+
+
+def _spec_to_donut(spec: ChartSpec) -> ChartDonutData:
+    """ChartSpec(donut/pie) → ChartDonutData."""
+    return ChartDonutData(
+        title=spec.title,
+        labels=spec.labels,
+        values=spec.values,
+        point_labels=spec.point_labels,
+        source=spec.source,
+    )
+
+
+def validate_chart(spec: ChartSpec) -> ChartSpec:
+    """ChartSpec 형식 검증 + line/bar의 라벨 자동 줄바꿈. sub_type별 분기."""
+    if spec.sub_type in ("line", "bar"):
+        line = _spec_to_line_bar(spec)
+        line = validate_chart_line(line)
+        return _line_bar_to_spec(line, spec.sub_type)
+    if spec.sub_type in ("donut", "pie"):
+        validate_chart_donut(_spec_to_donut(spec))
+        return spec
+    raise ChartDataError(f"unknown sub_type={spec.sub_type!r}")
+
+
+async def render_chart(
+    spec: ChartSpec,
     out_path: Path,
     size: str | CardSize = "default",
 ) -> Path:
-    """chart_pie 카드를 PNG로 렌더 (chart_donut 템플릿에 cutout=0 전달)."""
-    return await render_chart_donut(data, out_path, size, cutout=0)
+    """master_chart.html로 렌더. sub_type별 Jinja 분기로 4 sub-type 단일 통합 (plan §12.2).
+
+    회귀 가드(plan §12.4 가드 2 (b)): tests/fixtures/v1_6_4_chart_baseline/*.png SHA256과 동일해야 함.
+    parity 검증은 `scripts/_spike_chart_parity.py`.
+    """
+    spec = validate_chart(spec)
+    variables: dict = dict(
+        sub_type=spec.sub_type,
+        title=spec.title,
+        labels=spec.labels,
+        values=spec.values,
+        point_labels=spec.point_labels,
+        source=spec.source,
+        # line/bar 전용 — donut/pie 분기에선 사용 X지만 Jinja StrictUndefined 대비 명시 전달
+        sub_labels=spec.sub_labels,
+        y_unit=spec.y_unit,
+        y_min=spec.y_min,
+        y_max=spec.y_max,
+    )
+    if spec.sub_type in ("donut", "pie"):
+        variables["colors"] = _assign_colors(spec.labels)
+        variables["cutout"] = "55%" if spec.sub_type == "donut" else 0
+    else:
+        # line/bar 분기에서 사용 X — StrictUndefined 회피용 None
+        variables["colors"] = None
+        variables["cutout"] = None
+    return await render_template("master_chart", variables, out_path, size=size)

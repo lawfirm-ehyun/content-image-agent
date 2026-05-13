@@ -29,25 +29,14 @@ sys.path.insert(0, str(ROOT))
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
-from tools.render.chart_render import (  # noqa: E402
-    ChartBarData,
-    ChartDonutData,
-    ChartLineData,
-    render_chart_bar,
-    render_chart_donut,
-    render_chart_line,
-    render_chart_pie,
-)
+from tools.render.chart_render import ChartSpec, render_chart  # noqa: E402
 
 FIXTURE_DIR = ROOT / "tests" / "fixtures" / "v1_6_4_chart_baseline"
 
-# sub_type -> (dataclass, render fn)
-_DISPATCH = {
-    "line":  (ChartLineData, render_chart_line),
-    "bar":   (ChartBarData, render_chart_bar),
-    "donut": (ChartDonutData, render_chart_donut),
-    "pie":   (ChartDonutData, render_chart_pie),
-}
+# 캡처 시점 의미: 본 fixture의 captured_baseline.git_commit이 baseline 식별자.
+# Week 3a 통합 후 본 스크립트는 master_chart path로 동작 — git_commit이 a12f666이면
+# v1.6.4 chart_*.html 렌더 결과, 308d98e 이후면 master_chart 렌더 결과.
+# 두 SHA가 동일하면 master_chart가 v1.6.4 byte-identical (=Week 3a 통과 증명).
 
 
 def _git_head() -> str:
@@ -71,17 +60,16 @@ async def _capture_one(fixture_path: Path, *, force: bool) -> tuple[str, bool, s
     name = fixture_path.stem
     fix = json.loads(fixture_path.read_text(encoding="utf-8"))
     sub_type = fix["sub_type"]
-    if sub_type not in _DISPATCH:
+    if sub_type not in ("line", "bar", "donut", "pie"):
         return (name, False, f"unknown sub_type={sub_type!r}")
 
     if not force and fix.get("captured_baseline") is not None:
         ts = fix["captured_baseline"].get("captured_at")
         return (name, False, f"skip (already captured at {ts})")
 
-    dataclass_cls, render_fn = _DISPATCH[sub_type]
-    data = dataclass_cls(**fix["input"])
+    spec = ChartSpec(sub_type=sub_type, **fix["input"])
     png_path = FIXTURE_DIR / f"{name}.png"
-    await render_fn(data, png_path)
+    await render_chart(spec, png_path)
     if not png_path.exists() or png_path.stat().st_size == 0:
         return (name, False, f"render produced empty/missing PNG: {png_path}")
 

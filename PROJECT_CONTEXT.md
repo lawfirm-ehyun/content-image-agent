@@ -166,7 +166,7 @@ URL fragments:
 
 ### Phase 1 (현재 진행 중 — 한 사이클 자율 실행, 카드 2종)
 - ✅ `styles/ehyun_default.yaml` — 디자인 토큰
-- ✅ `templates/_base.css` + `simple_table.html` + `chart_line.html`
+- ✅ `templates/_base.css` + `simple_table.html` + `master_chart.html` (Week 3a 통합 — line/bar/donut/pie)
 - ✅ `tools/render/{template_render, chart_render}.py`
 - ✅ `tools/image/webp_converter.py` (lossless 기본)
 - ✅ `tools/notion/` 6개 모듈

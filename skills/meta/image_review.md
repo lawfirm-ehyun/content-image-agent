@@ -25,7 +25,7 @@ plan §4 카드 사이즈 정책에 따라 **1200×675 fixed 검증 폐기**. wi
 ## Phase 1 검증 항목 (자동, 코드 기반)
 - [ ] 산출 WebP 존재 + ≥ 1KB
 - [ ] 카드 사이즈 정책 충족 (위 표)
-- [ ] 차트 슬롯이면 `chart_render.validate_chart_line` 통과한 input이었나 (renderer side에서 보장)
+- [ ] 차트 슬롯이면 `chart_render.validate_chart` 통과한 input이었나 (renderer side에서 보장)
 
 ## Phase 2 검증 (vision OCR — Phase 1엔 미구현)
 - 이미지 텍스트 추출 → 변호사법 §23 키워드 재검사 (`tools/compliance/keywords.py` 단일 source 사용)
