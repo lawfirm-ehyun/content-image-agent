@@ -56,7 +56,7 @@ plan 안에서 자주 참조하는 핵심 4개:
 진입점:
 - 수동: `uv run python orchestrator.py` (`orchestrator.main()` → `process_database()` 블로그 + 웹 순차)
 - 단건: `uv run python scripts/test_phase1.py <page_id> --source <블로그|웹>`
-- cron: `.github/workflows/cron.yml` (현재 workflow_dispatch만, schedule 미가동)
+- cron: `orchestrator.main()`이 cron/workflow_dispatch 호출 전제로 작성됨. **`.github/workflows/cron.yml` 작성 완료 (2026-05-14)** — `workflow_dispatch` 만 가동, `schedule` 미가동 (§10 미결정 결정 후 활성화). 의존 step: checkout / setup-uv / `uv sync` / `playwright install --with-deps chromium` / `bash scripts/download_fonts.sh` / `uv run python orchestrator.py`. env: `NOTION_TOKEN`, `NOTION_DB_BLOG`, `NOTION_DB_WEB`, `NOTION_DB_LOG`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (필수) + `OPENAI_IMAGE_MODEL_INSTANT/THINKING` (선택). 사용자 별 작업: GitHub repo Settings → Secrets and variables → Actions 에 secret 박기.
 
 ## 4. 카드 카탈로그 (활성 7종)
 
@@ -148,7 +148,7 @@ plan 안에서 자주 참조하는 핵심 4개:
 
 | 항목 | 결정 시점 |
 |---|---|
-| cron schedule 활성화 (workflow_dispatch → schedule) | 운영자 검수 부담 결정 후 |
+| cron schedule 활성화 (workflow_dispatch → schedule) | `cron.yml` 작성 완료 (2026-05-14, `workflow_dispatch` only — §3 참조). `schedule` 라인 추가는 운영자 검수 부담 결정과 함께 별 트랙. |
 | chatgpt-image-latest 비교 | OpenAI organization verification 완료 후 (15분 propagate) |
 | gpt-image-1.5 콘텐츠별 라우팅 | 5/12 비교에서 라인 일러스트 톤 최고였음. 운영 데이터로 결정. |
 | kakao_dialogue OCR Levenshtein 검증 | kakao 실제 trigger 시 추가 (현재 0건). §12.6 subagent 활성화도 이 시점에 연동. |
@@ -325,6 +325,20 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 - production 페이지 (모든 슬롯 포함) **30+ 추가 누적** 시 (현재 9 → 39+) chart 자연 빈도 추정 가능 시점
 
 둘 다 이벤트 기반. 시간 기반 cron 평가 X. 다음 평가가 trigger 자체 재검토 의미 있는 첫 시점.
+
+### 12.8.3 평가 트리거 cron 의존 (2026-05-14 신설)
+
+§12.8.1/12.8.2 다음 평가 시점("자연 chart 페이지 N ≥ 5" / "production 페이지 30+ 추가 누적")은 **production page 자연 누적**에 의존. 이 누적은 cron schedule 가동을 전제로 함.
+
+**현재 상태 (2026-05-14)**:
+- `.github/workflows/cron.yml` **작성 완료** (§3 참조) — `workflow_dispatch` 만 가동, `schedule` 미가동.
+- 따라서 production page 누적은 **수동 trigger 빈도에 종속** (GitHub Actions UI "Run workflow" 또는 로컬 `uv run python orchestrator.py` / `scripts/test_phase1.py`).
+- `schedule` 활성화 = **§12.8 평가의 prerequisite** (자연 누적 측정 위해).
+
+**함의**:
+- `schedule` 활성화 전까지 §12.8 다음 평가 시점은 수동 실행 빈도 비례.
+- §12.8 트리거 정의(N=10, emphasis ≥30%) 자체 갱신은 자연 누적 데이터 없이 시기상조 — schedule 가동 후 자연 빈도 측정 후 결정.
+- `schedule` 활성화·운영자 검수 부담 결정은 별 트랙 (§10 미결정 항목). 이 §12.8 트리거 평가 트랙과 직교.
 
 ## 13. SEO + a11y 메타데이터 (alt_text + filename_slug) — v1.7.2-plan
 
