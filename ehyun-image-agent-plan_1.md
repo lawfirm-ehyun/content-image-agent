@@ -298,6 +298,34 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 - 9 chart row가 1 page에서 발생 → 동일 페이지가 schema 진화 동안 여러 차례 재처리됨(테스트 베드). 정상 production에선 page당 chart 1-3 row 예상.
 - chart 외 production 슬롯 분포: `simple_table 52 / key_points_card 3 / timeline 1 / illustration 1 / comparison_table 1`. simple_table 압도. chart 사용률 낮은 콘텐츠 특성 = §12.8 누적 속도 느릴 가능성 시사. Week 5-6 진입 결정 보수적으로 가능.
 
+### 12.8.2 2차 평가 (2026-05-14, 1차 직후)
+
+2fec81a baseline에서 동일 query 재실행. **테스트 베드 필터** 적용:
+- 정의: `page당 chart row ≥ 4` AND `해당 page 모든 chart row가 pre-Week 3b (orientation=null)`
+- 의도: schema 진화 동안 동일 페이지를 반복 재처리한 케이스는 production 신호로 계산 X. 자연 production은 page당 chart 1-3 row가 정상이므로 ≥4는 비정상 누적 신호.
+- 향후 자연 production 누적되면 정의 재검토 (현재는 1차에서 관찰된 단일 패턴 기반).
+
+| 항목 | 1차 (2026-05-14) | 2차 (2026-05-14, 필터 적용) | 트리거 임계 | 판정 |
+|---|---|---|---|---|
+| 처리된 unique 페이지 | 9 | 9 | — | 변동 0 (간격 분 단위, production 미진행) |
+| chart 로그 row | 9 | 9 | — | 변동 0 |
+| chart unique 페이지 (필터 전) | 1 | 1 | — | — |
+| **chart 자연 production 페이지 (테스트 베드 제외)** | — | **0** | N ≥ 10 | **MISS (gap 10)** |
+| 테스트 베드 페이지 | — | 1 (`35943f95...`, 9 line row, all pre-W3b) | — | 정확히 1차의 그 페이지 |
+| post-Week 3b chart row | — | **0** | — | emphasis/orientation 사용률 평가 불가 |
+| 본문 axis 신호 | 0건 | 0건 | — | 없음 |
+| 긴급 신호 | 0건 | 0건 | — | 없음 |
+
+**판정**: §12.2 "이후" **pause 계속**. 1차보다 더 엄격한 판정 (N=0 자연 chart page). 트리거 1·2 모두 MISS, 긴급 신호 0.
+
+**Trigger 재검토 (시기상조 결론)**: 사용자 guide("평가 2-3회 누적 후 trigger 재검토 가능, chart 자연 빈도 너무 낮으면 N=10 over-conservative")는 자연 빈도 측정 가능 후에 의미 있음. 현재 자연 chart 페이지 0 → 자연 빈도 측정 자체 불가 → trigger 갱신 시기상조. **N=10 임계 유지**.
+
+**다음 평가 시점**: 다음 두 조건 중 하나 충족 시:
+- 자연 chart 페이지 (테스트 베드 제외) **누적 N ≥ 5** 도달 시 (10 임계의 절반 — chart 빈도 자체를 측정할 첫 실측 데이터점)
+- production 페이지 (모든 슬롯 포함) **30+ 추가 누적** 시 (현재 9 → 39+) chart 자연 빈도 추정 가능 시점
+
+둘 다 이벤트 기반. 시간 기반 cron 평가 X. 다음 평가가 trigger 자체 재검토 의미 있는 첫 시점.
+
 ## 13. SEO + a11y 메타데이터 (alt_text + filename_slug) — v1.7.2-plan
 
 > **한 줄 사상**: LLM이 이미 카드의 모든 사실을 알고 있으므로 alt 한 줄 생성은 0 marginal. Notion = staging + 인간 검수 → 발행 path니까 caption→alt 매핑 검증 불필요, Notion *어디든* 들어가기만 하면 됨.
