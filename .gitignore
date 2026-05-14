@@ -86,6 +86,9 @@ scripts/_diag_*.py
 # Test fixtures — distinct 검증 산출물 (재생성 가능)
 tests/fixtures/_distinct_out/
 
+# Reference library (저작권 있는 외부 참조 자산 — 로컬/CI 한정, git 추적 X)
+reference_library/
+
 # Fonts (자동 다운로드, 라이선스 별도 관리)
 assets/fonts/*.otf
 assets/fonts/*.ttf
