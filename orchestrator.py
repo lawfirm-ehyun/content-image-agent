@@ -40,14 +40,9 @@ from tools.notion.update_status import update_page_status
 from tools.notion.upload_image import upload_image
 from tools.render.ai_render import render_ai_card
 from tools.render.chart_render import (
-    ChartBarData,
     ChartDataError,
-    ChartDonutData,
-    ChartLineData,
-    render_chart_bar,
-    render_chart_donut,
-    render_chart_line,
-    render_chart_pie,
+    ChartSpec,
+    render_chart,
 )
 from tools.render.template_render import render_template
 
@@ -151,34 +146,25 @@ async def _render_slot(
         if missing:
             raise ChartDataError(f"chart sub_type={sub} 필수 필드 누락: {missing}")
 
-        if sub in {"line", "bar"}:
-            common_kwargs = dict(
-                title=data["title"],
-                labels=data["labels"],
-                values=data["values"],
-                point_labels=data["point_labels"],
-                sub_labels=data.get("sub_labels"),
-                y_unit=data.get("y_unit"),
-                source=data.get("source"),
-                y_min=data.get("y_min"),
-                y_max=data.get("y_max"),
-            )
-            if sub == "line":
-                await render_chart_line(ChartLineData(**common_kwargs), out_png)
-            else:
-                await render_chart_bar(ChartBarData(**common_kwargs), out_png)
-        else:  # donut / pie
-            donut_data = ChartDonutData(
-                title=data["title"],
-                labels=data["labels"],
-                values=data["values"],
-                point_labels=data.get("point_labels"),
-                source=data.get("source"),
-            )
-            if sub == "donut":
-                await render_chart_donut(donut_data, out_png)
-            else:
-                await render_chart_pie(donut_data, out_png)
+        # Week 3a (plan §12.2): 4 sub-type 단일 ChartSpec + master_chart.html path.
+        # Week 3b: orientation(line/bar) + emphasis_index(공통) 2축 parametric.
+        # 둘 다 default(vertical, None)면 Week 3a byte-identity 동작 유지.
+        # line/bar는 sub_labels/y_unit/y_min/y_max를 사용, donut/pie는 무시(ChartSpec에선 None).
+        spec = ChartSpec(
+            sub_type=sub,
+            title=data["title"],
+            labels=data["labels"],
+            values=data["values"],
+            point_labels=data.get("point_labels"),
+            sub_labels=data.get("sub_labels"),
+            y_unit=data.get("y_unit"),
+            y_min=data.get("y_min"),
+            y_max=data.get("y_max"),
+            source=data.get("source"),
+            orientation=data.get("orientation", "vertical"),
+            emphasis_index=data.get("emphasis_index"),
+        )
+        await render_chart(spec, out_png)
     elif stype == "simple_table":
         await render_template(
             "simple_table",

@@ -1,0 +1,43 @@
+{
+  "purpose": "v1.6.4 chart_donut baseline — Week 3a master_chart 통합 회귀 가드",
+  "spec_ref": "plan v1.7.3 §12.2 / §12.4 가드 2 (b)",
+  "sub_type": "donut",
+  "render_fn": "tools.render.chart_render.render_chart_donut",
+  "template": "templates/chart_donut.html",
+  "comment": "MAX_DISTRIBUTION_SLICES=6 경계 + '기타' 키워드로 _assign_colors mono_other 분기까지 커버",
+  "input": {
+    "title": "2024 파리 종목별 금메달 (예시 분포)",
+    "labels": [
+      "양궁",
+      "사격",
+      "펜싱",
+      "태권도",
+      "배드민턴",
+      "기타"
+    ],
+    "values": [
+      5,
+      3,
+      2,
+      1,
+      1,
+      1
+    ],
+    "point_labels": [
+      "5개",
+      "3개",
+      "2개",
+      "1개",
+      "1개",
+      "1개"
+    ],
+    "source": "출처: IOC (테스트 픽스처, §23-safe)"
+  },
+  "captured_baseline": {
+    "png_path": "chart_donut.png",
+    "png_bytes": 57975,
+    "sha256": "fdcd5bc986764071176727e4fad04296202c0dee1f28658d239ed18bf938d6a0",
+    "captured_at": "2026-05-13T07:01:03+00:00",
+    "git_commit": "a12f666197ada861f48ed71b70b06101cc4e0917"
+  }
+}

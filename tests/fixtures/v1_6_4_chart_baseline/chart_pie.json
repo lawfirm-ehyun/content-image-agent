@@ -1,0 +1,32 @@
+{
+  "purpose": "v1.6.4 chart_pie baseline — Week 3a master_chart 통합 회귀 가드",
+  "spec_ref": "plan v1.7.3 §12.2 / §12.4 가드 2 (b)",
+  "sub_type": "pie",
+  "render_fn": "tools.render.chart_render.render_chart_pie",
+  "template": "templates/chart_donut.html (cutout=0)",
+  "comment": "pie는 chart_donut.html 재사용 + cutout=0 분기. point_labels=null로 자동 % 계산 경로 커버.",
+  "input": {
+    "title": "지역별 분포 (예시 픽스처)",
+    "labels": [
+      "수도권",
+      "영남권",
+      "호남권",
+      "충청권"
+    ],
+    "values": [
+      40,
+      30,
+      20,
+      10
+    ],
+    "point_labels": null,
+    "source": "테스트 픽스처 — §23-safe 합성 데이터"
+  },
+  "captured_baseline": {
+    "png_path": "chart_pie.png",
+    "png_bytes": 50128,
+    "sha256": "e9d5b720ff30e916a4c7322dc3918dcb29cb207c690f3b083806d5db3bda88db",
+    "captured_at": "2026-05-13T07:01:05+00:00",
+    "git_commit": "a12f666197ada861f48ed71b70b06101cc4e0917"
+  }
+}

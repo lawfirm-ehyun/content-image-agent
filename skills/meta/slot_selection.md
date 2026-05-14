@@ -59,6 +59,8 @@
     - `point_labels` (list[str]): 포인트 위 표시 — "28,988건" 형태 (단위 포함 라벨)
     - `y_unit` (str, 옵션): "(건)" "(%)" 등
     - `source` (str, 옵션): 본문 출처 그대로
+    - `orientation` (str, 옵션, line/bar만): `"vertical"`(default) | `"horizontal"`. 카테고리 라벨이 길거나 6+개면 horizontal.
+    - `emphasis_index` (int, 옵션, 4 sub_type 공통): 본문이 강조하는 포인트/막대/slice 인덱스. 강조 신호 없으면 생략(None) — 임의 강조 X.
   - **values 못 채우면 chart 슬롯 결정 X.** 본문에 시계열 숫자 명시 안 됐으면 simple_table 또는 슬롯 X.
 - **카테고리 비교 (지역별/유형별 절대값)** ("지역별 건수", "사건 유형별 처리") → `chart` sub_type=`bar`
   - 데이터 shape는 line과 동일 (title, labels, values, point_labels). x축이 카테고리(순서 의미 약함).
