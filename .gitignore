@@ -78,6 +78,14 @@ templates/_preview_*.html
 templates/_preview_*.png
 scripts/_diag_*.py
 
+# bkit plugin runtime (세션별 noise, repo와 무관)
+.bkit/audit/
+.bkit/runtime/
+.bkit/state/
+
+# Test fixtures — distinct 검증 산출물 (재생성 가능)
+tests/fixtures/_distinct_out/
+
 # Fonts (자동 다운로드, 라이선스 별도 관리)
 assets/fonts/*.otf
 assets/fonts/*.ttf
