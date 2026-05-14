@@ -12,9 +12,12 @@ pipeline_defs/blog_image.yaml의 명세를 코드로 구현. Phase 1엔 수동 t
 """
 from __future__ import annotations
 
+import argparse
 import asyncio
+import json
 import logging
 import os
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -530,20 +533,136 @@ async def process_database(
     return out
 
 
+async def list_pending_pages() -> list[dict[str, str]]:
+    """matrix fan-out 용 `--mode list` 핸들러.
+
+    블로그 + 웹 DB 에서 "이미지 필요" 페이지(각 DB 최대 `_DEFAULT_BATCH_LIMIT`)
+    fetch 후, §19.1 멱등성 filter (`get_logged_page_ids`) 적용해 이미 처리된
+    페이지 제거. GitHub Actions fetch job 이 stdout JSON 을 캡처해 matrix
+    include 로 expose.
+
+    반환 형식: `[{"page_id": "<id>", "source": "블로그"|"웹"}, ...]`.
+    """
+    log_db_id = os.environ["NOTION_DB_LOG"].strip()
+    blog_db_id = os.environ["NOTION_DB_BLOG"].strip()
+    web_db_id = os.environ["NOTION_DB_WEB"].strip()
+
+    logged_ids = await get_logged_page_ids(log_db_id, limit=100)
+    logger.info("list 모드: 로그 이력 페이지 %d건 로드 — skip 후보", len(logged_ids))
+
+    out: list[dict[str, str]] = []
+    for db_id, source in ((blog_db_id, "블로그"), (web_db_id, "웹")):
+        pages = await fetch_pages_by_status(
+            db_id, status="이미지 필요", limit=_DEFAULT_BATCH_LIMIT,
+        )
+        for page in pages:
+            page_id = page["id"]
+            if norm_uuid(page_id) in logged_ids:
+                logger.info(
+                    "[%s] page %s 처리 이력 발견 — list 제외 (§19.1).",
+                    source, page_id,
+                )
+                continue
+            out.append({"page_id": page_id, "source": source})
+        logger.info("[%s] '이미지 필요' 페이지 %d건 (필터 후 %d건)",
+                    source, len(pages), sum(1 for p in out if p["source"] == source))
+
+    return out
+
+
+async def process_single_page(
+    page_id: str, source: Literal["블로그", "웹"],
+) -> PageResult | None:
+    """matrix fan-out 용 `--page-id` 핸들러 (cell 당 1회 호출).
+
+    process_database 의 페이지 루프 1회차와 같은 가드 적용:
+      - §19.1 멱등성 (race condition / 재시도 케이스 대비 재확인)
+      - §19.9 page-level try/except (예외는 GHA cell 빨간 X 로 surface)
+      - 자체 RunBudget(`PER_RUN_CAP_USD`) — cell 당 cap 으로 작동
+      - PER_PAGE_CAP_USD 는 run_for_page 내부에서 슬롯 단위로 적용
+
+    이미 로그된 페이지면 skip 으로 None 반환 (job exit 0).
+    """
+    log_db_id = os.environ["NOTION_DB_LOG"].strip()
+
+    logged_ids = await get_logged_page_ids(log_db_id, limit=100)
+    if norm_uuid(page_id) in logged_ids:
+        logger.warning(
+            "[%s] page %s 처리 이력 발견 — skip (§19.1 멱등성). "
+            "재처리 원하면 로그 row + 기존 image block 수동 제거 필요.",
+            source, page_id,
+        )
+        return None
+
+    run_budget = RunBudget(cap_usd=PER_RUN_CAP_USD)
+    logger.info("=== single-page run 시작 — cap $%.2f ===", PER_RUN_CAP_USD)
+
+    r = await run_for_page(page_id, source, log_db_id)
+    run_budget.add(r.cost_usd)
+    logger.info(
+        "[%s] page %s 완료 — 슬롯 %d/%d, $%.4f (cell 누적 $%.4f)",
+        source, page_id, r.slots_passed, r.slots_total, r.cost_usd,
+        run_budget.spent_usd,
+    )
+    return r
+
+
 async def main() -> None:
-    """cron / workflow_dispatch 진입점. 블로그 + 웹 DB 순차 처리."""
+    """cron / workflow_dispatch 진입점.
+
+    3 모드 분기 (인자 없음 = 기존 sweep 동작 보존):
+      - 인자 없음: 블로그 + 웹 DB sweep (`process_database`).
+      - `--mode list`: 페이지 목록 JSON 을 stdout 출력 (matrix fan-out fetch job).
+      - `--page-id ID --source SRC`: 단일 페이지 처리 (matrix process job cell).
+
+    drift 처리 룰 — plan §3 / §12.8.3 / Changelog v1.7.5-plan 과 동기.
+    """
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        stream=sys.stderr,  # stdout 은 list 모드 JSON 전용 — 로그 섞이지 않게.
     )
 
-    # .env 지원 — GitHub Actions는 secrets로 환경변수 주입, 로컬은 .env 사용.
+    # .env 지원 — GitHub Actions 는 secrets 로 환경변수 주입, 로컬은 .env 사용.
     try:
         from dotenv import load_dotenv
         load_dotenv()
     except ImportError:
         pass
 
+    parser = argparse.ArgumentParser(
+        description="cron / matrix fan-out 진입점. 인자 없으면 블로그+웹 sweep.",
+    )
+    parser.add_argument(
+        "--mode", choices=["list"], default=None,
+        help="list: '이미지 필요' 페이지(멱등성 필터 적용)를 JSON 으로 stdout 출력.",
+    )
+    parser.add_argument(
+        "--page-id", default=None,
+        help="단일 페이지 처리. --source 와 함께 사용.",
+    )
+    parser.add_argument(
+        "--source", choices=["블로그", "웹"], default=None,
+        help="단일 페이지 처리 시 페이지 출처 DB.",
+    )
+    args = parser.parse_args()
+
+    # 분기 1 — list 모드 (matrix fetch job)
+    if args.mode == "list":
+        pages = await list_pending_pages()
+        # ensure_ascii=True — Windows 콘솔 CP949 / Linux UTF-8 둘 다 안전 (한글 → \uXXXX 이스케이프).
+        # GitHub Actions `fromJSON` 은 표준 JSON 파서라 이스케이프 자동 복원.
+        sys.stdout.buffer.write(json.dumps(pages, ensure_ascii=True).encode("ascii") + b"\n")
+        return
+
+    # 분기 2 — 단일 페이지 (matrix process job cell)
+    if args.page_id:
+        if not args.source:
+            parser.error("--page-id 사용 시 --source 필수 (블로그|웹).")
+        await process_single_page(args.page_id, args.source)
+        return
+
+    # 분기 3 (default) — 전체 sweep (기존 동작 보존)
     log_db_id = os.environ["NOTION_DB_LOG"].strip()
     blog_db_id = os.environ["NOTION_DB_BLOG"].strip()
     web_db_id = os.environ["NOTION_DB_WEB"].strip()
