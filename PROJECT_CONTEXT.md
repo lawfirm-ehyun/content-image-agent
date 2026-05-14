@@ -14,48 +14,51 @@
 
 - Python 3.12
 - 패키지 관리: `uv` 0.11+
-- 의존성: `claude-agent-sdk` 0.1.74, `notion-client` 3.0, `playwright` 1.59, `pillow` 12, `pydantic` 2.13, `pyyaml` 6, `httpx` 0.28, `openai` 2.34
+- 의존성: `claude-agent-sdk` 0.1.77, `notion-client` 3.0, `playwright` 1.59, `pillow` 12, `pydantic` 2.13, `pyyaml` 6, `httpx` 0.28, `openai` 2.34
 - 렌더링: Playwright (Chromium headless) + Chart.js + Pretendard
 - 폰트: Pretendard 1.3.9 (Regular/Medium/SemiBold/Bold) — `scripts/download_fonts.sh`로 자동 다운로드
 
-## 3. LLM 호출 — claude-agent-sdk **우회** + bundled CLI subprocess (v1.2 확정)
+## 3. LLM 호출 — claude-agent-sdk `query()` 직접 호출 (§12 Week 1-2, 2026-05-13)
 
-### 3.1 현재 패턴 (Phase 1)
+### 3.1 현재 패턴
 
-claude-agent-sdk 0.1.x는 우리 use case(단일 LLM 1회 호출 + in-process tools)에 비효율 — default Claude Code agent system prompt 추가 inject + max_turns 무시 등으로 토큰 비용 3배 초과. 같은 prompt를 CLI 직접(`claude.exe -p ... --system-prompt ...`)으로 부르면 정상 응답.
+`tools/llm/_common.py:query_json`이 `claude-agent-sdk.query()`를 단발 호출. plan §12 Week 0 spike(2026-05-12, `scripts/_spike_sdk.py`)에서 SDK 0.1.77 + Sonnet 4.6 + `max_turns=1` + `setting_sources=[]` 가드 하 functional equivalence 확인 (이전 "토큰 비용 3배+" 우회 동기는 위 가드로 해소).
 
-→ **SDK API는 우회**. 단 bundled `claude.exe`는 그대로 사용 (의존성/인증 path는 SDK가 제공).
+agent loop / hooks / subagents 풀 도입은 X — plan §12.6 "처음부터 다 빼지 말기". 단발 query() 1회만.
 
 ```python
 # tools/llm/_common.py 요지
-CLAUDE_EXE = ROOT / ".venv" / "Lib" / "site-packages" / "claude_agent_sdk" / "_bundled" / "claude.exe"
-
-cmd = [str(CLAUDE_EXE), "-p",
-       "--model", "claude-sonnet-4-6",
-       "--output-format", "json",
-       "--max-budget-usd", f"{cap}",
-       "--system-prompt", system_prompt_with_skills_inlined,
-       user_prompt]
+options = ClaudeAgentOptions(
+    model=DEFAULT_MODEL,
+    system_prompt=system_prompt_with_skills_inlined,
+    max_budget_usd=cap,
+    max_turns=1,           # 단발 호출, agent loop X
+    setting_sources=[],    # CLAUDE.md / settings.json 자동 inject 차단 (옵션 A)
+)
+async for msg in query(prompt=user_prompt, options=options):
+    if isinstance(msg, ResultMessage):
+        cost = float(msg.total_cost_usd or 0.0)
+        result_text = msg.result or result_text
 ```
 
-### 3.2 모델 ID (확정 v1.2)
+### 3.2 모델 ID (확정)
 
-- **default**: `claude-sonnet-4-6` — SDK 0.1.74로 안정 호출 검증됨 (`tools/llm/_common.py:25`).
-- Opus 4.7 (`claude-opus-4-7`)은 SDK ≥ 0.2.111 필요 — Phase 4 학습 루프 진입 시 분석 품질 부족하면 SDK 업그레이드 + Opus 검토.
+- **default**: `claude-sonnet-4-6` — SDK 0.1.77로 안정 호출 (spike N=4 + production N=3).
+- **Opus 4.7** (`claude-opus-4-7`): SDK 0.1.77로 호출 OK 확인 (2026-05-13 ping, subtype=success, $0.16). plan §12.4 fallback (a) 회피. Phase 4 학습 루프 진입 시 분석 품질 부족하면 default 변경 검토.
 
 ### 3.3 Skills 로드 — 옵션 A 확정 (v1.2)
 
-SDK 자동 로드(`.claude/skills/{name}/SKILL.md`)는 **사용 안 함**. `tools/llm/_common.load_skill()`로 `skills/image_types/{name}.md` 본문을 직접 읽어 system_prompt에 inject.
+SDK 자동 로드(`.claude/skills/{name}/SKILL.md`)는 **사용 안 함**. `tools/llm/_common.load_skill()`로 `skills/image_types/{name}.md` 본문을 직접 읽어 system_prompt에 inject. `ClaudeAgentOptions(setting_sources=[])`로 CLAUDE.md/settings.json 자동 inject도 차단.
 
 근거: OpenMontage "운영 일관성" 의도 + 디렉터리 구조 통제권 + skill 로드 시점/방식 명시적 제어.
 
-### 3.4 Phase 2/3 SDK 재도입 검토 시점
+### 3.4 SDK 추가 도입 검토 시점
 
-다음 기능이 필요해지면 SDK 부분 재도입 검토:
+현재 도입: `query()` 단발 호출 (§12 Week 1-2). 다음 기능은 시점이 오면 검토:
 - **Hooks**: `PreToolUse`, `PostToolUse`, `UserPromptSubmit` (변호사법 §23 검사 게이트로 활용 가능)
-- **Subagents**: 카드 타입별 specialized agent
+- **Subagents**: 카드 타입별 specialized agent — plan §12.6 stateless task 기준 (§23 regex pass, OCR Levenshtein 등)
 - **MCP servers**: 외부 시스템 연동
-현재(Phase 1)는 모두 미사용.
+- **agent loop**: §12.2 Week 3a+ 차트/AI 자가 수정 능력 활성 시점
 
 ### 3.5 비용 상수 (`tools/limits.py` 신설 예정)
 
@@ -163,7 +166,7 @@ URL fragments:
 
 ### Phase 1 (현재 진행 중 — 한 사이클 자율 실행, 카드 2종)
 - ✅ `styles/ehyun_default.yaml` — 디자인 토큰
-- ✅ `templates/_base.css` + `simple_table.html` + `chart_line.html`
+- ✅ `templates/_base.css` + `simple_table.html` + `master_chart.html` (Week 3a 통합 — line/bar/donut/pie)
 - ✅ `tools/render/{template_render, chart_render}.py`
 - ✅ `tools/image/webp_converter.py` (lossless 기본)
 - ✅ `tools/notion/` 6개 모듈

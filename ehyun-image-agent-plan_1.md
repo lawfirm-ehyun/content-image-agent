@@ -1,4 +1,4 @@
-# 이현 블로그 이미지 에이전트 — Plan (v1.7.1-plan)
+# 이현 블로그 이미지 에이전트 — Plan (v1.7.3-plan)
 
 > 노션 콘텐츠에 자동으로 이미지 카드 박는 에이전트.
 >
@@ -170,6 +170,8 @@ plan 안에서 자주 참조하는 핵심 4개:
 > **한 줄 사상**: "차트는 코드로, 그림은 AI로" — 이미 가진 architecture 그대로. SDK 얹어서 자가 수정 + 차트 4종 → `master_chart.html` 통합 + 2축 parametric.
 >
 > **목표**: agent loop / hooks / subagents를 들이면서 차트 4 sub-type을 단일 `master_chart`로 통합 + 2축 parametric화. "AI가 결과 보고 자가 수정" + "같은 데이터로 다양한 시각 출력" 동시 검증.
+>
+> **🔒 Plan freeze (v1.7.3+)**: Week 0 spike 실측 데이터 받기 전까지 추가 refine 없음. mid-checkpoint decision gate / falsifiable Week 4 기준 / composition phase reframing 등 후속 보강은 *그 시점 데이터 보고* 결정. plan은 지도이지 destination이 아님 — 코드 작성 우선.
 
 ### 12.1 배경 — SDK 우회의 후유증
 
@@ -181,12 +183,16 @@ v1.6.4까지 `tools/llm/_common.py`가 bundled `claude.exe` subprocess 호출 (�
 
 0.2.111+에서 Opus 4.7이 풀린 것으로 보이므로 **제자리 마이그레이션 가능 시점**. 풀 리빌드 X — `orchestrator.main()` + `tools/llm/_common.py` 껍데기만 갈아끼움.
 
+> **Week 0 spike 노트 (2026-05-12, N=4 한계)**: claude-agent-sdk 0.1.77 + Sonnet 4.6 + `max_turns=1 + setting_sources=[]` 가드 하에 SDK 호출이 subprocess 대비 일관 **0.34-0.64x cost** 측정됨 (N=4, `scripts/_spike_sdk.py`). 위 "토큰 비용 3배+" 우려 frame 재측정 트리거. 다만 N 한계 + 합성 본문(`tests/fixtures/spike_sdk_baseline.json`) + cache miss 조건이므로 단정 X. Week 1-2 통합 시 실제 본문 + cache hit 포함 N≥3 재측정 예정.
+>
+> **Week 1-2 production 측정 (2026-05-13, N=3, `scripts/_spike_n3_cost.py`)**: 블로그 DB 1페이지 (73 compacted blocks, ~5825c 본문) `analyze_content` N=3 → mean **$0.2617**, max $0.3357, min $0.1459, **cache ratio min/max 0.43x** (cache hit 자동 작동). `ANALYZE_BUDGET_USD=$0.80` cap 안전. SDK path는 functional regression 0 — spike fixture에서 사실 데이터(values/rows) 1자 보존 + title/headers 라벨링은 LLM stochastic 변동(절대 룰 #1 허용 영역), review_input passed=True. spike의 0.34-0.64x는 *vs subprocess 비교*, production 0.43x는 *vs same-page cache miss 비교* — 별도 척도.
+
 ### 12.2 4주 스코프
 
 | 주차 | 작업 | 결과물 |
 |---|---|---|
 | Week 0 | SDK spike (§12.4 가드 1) | 4개 검증 항목 통과 |
-| Week 1-2 | SDK 0.2.111+ 마이그레이션. `claude.exe` 경로 제거. agent loop 활성. 차트/AI 카드 양쪽에 자가 수정 능력 적용. | SDK 경로로 e2e 1페이지 통과 |
+| Week 1-2 | **claude-agent-sdk 0.1.77 `query()` 직접 호출**로 `tools/llm/_common.py:query_json` 갈아끼움 (subprocess 경로 dead reference). agent loop / hooks / subagents 풀 도입 X — §12.6 "처음부터 다 빼지 말기" 정신. 단발 `query()` 1회 + `max_turns=1` + `setting_sources=[]` 가드 유지. 자가 수정 / 차트 자동화는 Week 3a+ 이후 별도 진입. | SDK 경로로 `analyze_content` + `review_input` 통과. spike fixture e2e (b7fe789) + production 1페이지 N=3 측정 (§12.1). |
 | Week 3a | `chart_bar/line/donut/pie.html` 4개 → `master_chart.html` 1개 통합. `ChartLineData/ChartBarData/ChartDonutData` → `ChartSpec` 단일 스키마 (`chart_type` 필드 분기). **회귀 검증 방법**: 4 sub-type 각 sample input 픽스처 1개씩 (`tests/fixtures/chart_*.json`) → pre-refactor 렌더 PNG 저장 → post-refactor 렌더 PNG → SHA 또는 OCR text diff 비교. 차이 0 → 통과. | `master_chart.html` + `ChartSpec` 단일 스키마 + 4 sub-type 회귀 0. |
 | Week 3b | `master_chart`에 손잡이 2개 추가: ① `orientation: 'vertical'\|'horizontal'` — **bar/line 적용** (donut/pie는 원형이라 의미 없음, null 허용). ② `emphasis_index: int\|null` — **4 sub-type 공통**. `ChartSpec` / `skills/image_types/chart.md` 동기. donut/pie 전용 axis(`start_angle` / `label_position` / `slice_explode` 등)는 Week 5+ 별도 결정. | bar/line: 2축 곱 = 4-variant. donut/pie: emphasis만 적용. |
 | Week 4 | **bar 3회 e2e** (같은 데이터셋, visually distinct 검증 — §12.4 가드 2) + **line/donut/pie 각 1회 e2e** (master_chart 통합 회귀 검증, Phase 3 v1.6.4 결과물과 시각/사실 동일). 총 6회. | bar 2/3 distinct + 비-bar 3종 회귀 통과 → Week 5 진행 |
@@ -207,7 +213,9 @@ v1.6.4까지 `tools/llm/_common.py`가 bundled `claude.exe` subprocess 호출 (�
 - `token-ledger.ndjson` 비용 계상이 SDK 경로에서도 동일 작동
 - skill markdown을 system_prompt에 inject (옵션 A) 가능
 
-→ 4개 중 하나라도 막히면 Week 1-2 일정 재산정.
+→ 4개 중 하나라도 막히면 fallback 3경로 중 spike 결과 보고 선택: **(a)** Opus 4.7 호출 실패 시 → Sonnet 4.6로 진행 / **(b)** skill inject 막힘 시 → 옵션 B (`.claude/skills/`로 이동 + SDK auto-load) 수용 / **(c)** 비용 계상 깨짐 시 → claude.exe wrapper 유지 + SDK는 hooks/subagents만 사용 (하이브리드).
+
+→ **결과 (2026-05-12 spike b7fe789, 2026-05-13 Week 1-2 진입)**: 4개 항목 통과 (SDK 0.1.77 + Sonnet 4.6, `tests/fixtures/spike_sdk_baseline.json` N=4 byte-identical simple_table). 추가로 Week 1-2 진입 시 **Opus 4.7 ping 1회 = success** (subtype=success, cost $0.16, SDK 0.1.77 그대로) — fallback (a) 회피, 0.2.111+ 업그레이드 정당성 부재. token-ledger 비용 계상은 production 본격 통합 후 별도 검증 (`scripts/_spike_n3_cost.py`는 ledger 우회).
 
 **가드 2 — Week 4 합격선** (두 갈래):
 
@@ -220,6 +228,9 @@ v1.6.4까지 `tools/llm/_common.py`가 bundled `claude.exe` subprocess 호출 (�
 |---|---|
 | distinct 2/3+ | Week 5-6 line/donut/pie 동일 parametric 작업 |
 | distinct 1/3 이하 | parametric vocab 확장 X. **composition primitive 검토** (grid cell + callout slot + multi-panel). 25장 레퍼런스의 50-70%는 parametric이 아니라 composition 결정에서 옴 |
+| **실제 결과 (2026-05-13, 4fd5aa8/1ece541)**: distinct **3/3 PASS** + 회귀 **4/4 SHA byte-identical**. | **§12.2 "이후" path 진입 (pause)** — Week 5-6 line/donut/pie parametric 즉시 진입 X. production 사용 패턴 누적 대기 (§12.8). |
+
+> 분기 결정 배경 (2026-05-13): Week 4 distinct 검증은 같은 bar 데이터셋의 변형이 시각 분기를 만들어내는지만 검증 — sub_type별 (line/donut/pie) 데이터셋에서 emphasis가 의미 있는 시각 효과를 내는지는 별도 문제. 또한 LLM이 본문에서 orientation/emphasis_index를 얼마나 자주, 적절히 결정하는지는 spike 스크립트로 알 수 없음. parametric vocab 확장 전에 실사용 데이터를 보고 결정 — 80% plan으로 출발이 100% plan보다 빠름 (v1.7.3 freeze 정신 연속).
 
 ### 12.6 subagent 분리 기준 (Week 1-2 가이드)
 
@@ -232,10 +243,88 @@ claude-agent-sdk subagent는 자체 context 격리됨. 따라서:
 
 ### 12.7 미결정 (Week 0 이후 결정)
 
-- claude-agent-sdk 정확 버전 (0.2.111+ 중 어디 고정할지)
-- agent loop max iteration cap (비용 폭주 방지)
-- `master_chart` emphasis_index의 시각 표현 (색상 강조 / 라벨 강조 / 둘 다)
-- donut/pie 전용 axis 후보 (`start_angle` / `label_position` / `slice_explode` 등) — Week 4 결과 보고 Week 5+에 결정
+- ~~claude-agent-sdk 정확 버전 (0.2.111+ 중 어디 고정할지)~~ → **0.1.77 고정 (2026-05-13)**. Opus 4.7 호출 OK + spike 4 checks + production N=3 모두 0.1.77로 통과. 0.2.111+ 업그레이드는 hooks/subagents 풀 도입 필요 시점에 재평가.
+- agent loop max iteration cap (비용 폭주 방지) — Week 3a+ agent loop 활성 시점에 결정
+- `master_chart` emphasis_index의 시각 표현 (색상 강조 / 라벨 강조 / 둘 다) — **Week 3b/4 결과 (2026-05-13)**: 색상 강조 1개만 ship (line/bar 비강조 = neutral·옅은 mono / donut/pie 비강조 = mono-other). 라벨 강조·다중화는 §12.8 production 사용 패턴 누적 대기.
+- donut/pie 전용 axis 후보 (`start_angle` / `label_position` / `slice_explode` 등) — Week 4 결과 받음 (distinct 3/3 + 회귀 0/4), **§12.8 pause 채택**. 누적 대기.
+- bar/line `orientation`의 3번째 후보 (예: `diagonal` / 면적 chart 회전 등) — 같은 §12.8 대기 (현재 vertical/horizontal 2개로 충분 여부 누적 검증).
+- ~~`tools/llm/models.py:CLAUDE_EXE` dead reference cleanup 시점~~ → **완료 (2026-05-13)**. 변수 제거 + `PROJECT_CONTEXT.md` §3 동기화.
+
+### 12.8 §12.2 "이후" pause — Week 5-6 진입 조건 (2026-05-13 신설)
+
+Week 4 distinct 3/3 + 회귀 0/4 PASS 후에도 parametric vocab 확장을 **즉시 진입 X**. 진입 조건 충족 후 재개:
+
+**진입 트리거 (둘 중 하나라도 충족):**
+1. **production page N ≥ 10** 처리 + `ChartSpec.emphasis_index != None` 사용률이 ≥ 30% (LLM이 본문에서 실제로 강조 신호를 자주 추출하는지 = parametric 손잡이가 production에서 의미 있는지 신호)
+2. **본문 패턴이 새 axis 필요성을 명시적으로 신호** — 예: 시계열 강조 위치가 단일 인덱스로 부족 (구간 강조), donut/pie에서 slice 분리 강조 요구, line chart `area fill` 시각 톤 요구
+
+> N=10은 cold-start 기준. 실제 threshold는 누적 후 패턴 보고 재조정. *80% plan 정신* — 정확한 cutoff는 데이터 보고.
+
+**누적 메커니즘 (별 인프라 X) — 2026-05-14 drift 정정:**
+- 신설 시점 plan은 `.bkit/runtime/token-ledger.ndjson`을 per-slot 기록처로 잘못 지목. 실제는 **Notion 로그 DB**(`NOTION_DB_LOG`)의 `입력(JSON)` rich_text가 `extracted_data` 전체(즉 `orientation`/`emphasis_index` 포함)를 직렬화해 보관(`tools/notion/log_metadata.py`). `.bkit/runtime/token-ledger.ndjson`은 bkit/CC 하네스의 turn 단위 토큰 텔레메트리로 슬롯 데이터와 무관.
+- 따라서 트리거 평가 시 별도 emit 추가 **불필요** — Notion 로그 DB query만으로 sub_type / orientation / emphasis_index 집계 가능.
+- **현재(2026-05-13) 코드 변경 0**: 진입 트리거 검토 시점에 결정.
+
+**진입 후 (= 미래 Week 5-6) 작업 윤곽 (확정 X, 메모만):**
+- line/donut/pie 각 sub_type 단일 series 데이터셋으로 emphasis 시각 분기 검증 (bar Week 3b/4 패턴 답습)
+- §12.7 미결정 axis 후보 중 production 신호가 가장 강한 1개부터 (3개 다 미리 박지 X — 가드 #1 정신 연속)
+- composition primitive 검토는 distinct 미달 시그널 없으면 별 트랙으로 보류
+
+**pause 깨는 신호 (긴급 진입):**
+- production 본문에서 chart 슬롯이 시각 단조로움으로 사용자 피드백 발생 (Week 4 distinct가 lab에서 PASS여도 production에서 약하면 거기서 끊고 진입)
+- LLM이 본문 강조를 못 잡거나 잘못 잡아 chart 폐기율 상승 (orientation/emphasis_index 결정 품질 문제)
+- 위 신호 발견 시 N 조건 충족 전이라도 Week 5-6 진입 검토
+
+### 12.8.1 1차 평가 (2026-05-14)
+
+a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique page).
+
+| 항목 | 값 | 트리거 임계 | 판정 |
+|---|---|---|---|
+| 처리된 unique 페이지 | 9 | — | — |
+| chart 슬롯 로그 row | 9 | — | — |
+| **chart 슬롯이 박힌 unique 페이지** | **1** | N ≥ 10 | **MISS (gap 9)** |
+| chart sub_type 분포 | `line` 9/9 | — | bar/donut/pie production 사용례 0 |
+| `emphasis_index != None` 사용률 | 0/9 = **0%** | ≥ 30% | **MISS (단, 9 row 모두 Week 3b 박기 전 input — 의미 0)** |
+| `orientation` 분포 | 9/9 null (= vertical default) | — | Week 3b 박기 전 input |
+| 본문 신호(다중 강조 / slice 분리 / area fill 요구) | 0건 | — | 없음 |
+| 긴급 신호(시각 단조 피드백 / 폐기율 급증) | 0건 | — | 없음 |
+
+**판정**: §12.2 "이후" **pause 계속**. N=1 chart page, 트리거 1·2 모두 MISS, 긴급 신호 0.
+
+**다음 평가 시점**: chart 슬롯이 박힌 unique production 페이지 **누적 N ≥ 10** 도달 시 (현재 1 → 9개 추가 누적 필요). 누적 속도가 느린 분야이므로 시간 기반 cron 평가 X, 이벤트 기반(N 도달 시) 1회.
+
+**메모 (§12.8 본문엔 미박음, 관찰만)**:
+- 9 chart row가 1 page에서 발생 → 동일 페이지가 schema 진화 동안 여러 차례 재처리됨(테스트 베드). 정상 production에선 page당 chart 1-3 row 예상.
+- chart 외 production 슬롯 분포: `simple_table 52 / key_points_card 3 / timeline 1 / illustration 1 / comparison_table 1`. simple_table 압도. chart 사용률 낮은 콘텐츠 특성 = §12.8 누적 속도 느릴 가능성 시사. Week 5-6 진입 결정 보수적으로 가능.
+
+### 12.8.2 2차 평가 (2026-05-14, 1차 직후)
+
+2fec81a baseline에서 동일 query 재실행. **테스트 베드 필터** 적용:
+- 정의: `page당 chart row ≥ 4` AND `해당 page 모든 chart row가 pre-Week 3b (orientation=null)`
+- 의도: schema 진화 동안 동일 페이지를 반복 재처리한 케이스는 production 신호로 계산 X. 자연 production은 page당 chart 1-3 row가 정상이므로 ≥4는 비정상 누적 신호.
+- 향후 자연 production 누적되면 정의 재검토 (현재는 1차에서 관찰된 단일 패턴 기반).
+
+| 항목 | 1차 (2026-05-14) | 2차 (2026-05-14, 필터 적용) | 트리거 임계 | 판정 |
+|---|---|---|---|---|
+| 처리된 unique 페이지 | 9 | 9 | — | 변동 0 (간격 분 단위, production 미진행) |
+| chart 로그 row | 9 | 9 | — | 변동 0 |
+| chart unique 페이지 (필터 전) | 1 | 1 | — | — |
+| **chart 자연 production 페이지 (테스트 베드 제외)** | — | **0** | N ≥ 10 | **MISS (gap 10)** |
+| 테스트 베드 페이지 | — | 1 (`35943f95...`, 9 line row, all pre-W3b) | — | 정확히 1차의 그 페이지 |
+| post-Week 3b chart row | — | **0** | — | emphasis/orientation 사용률 평가 불가 |
+| 본문 axis 신호 | 0건 | 0건 | — | 없음 |
+| 긴급 신호 | 0건 | 0건 | — | 없음 |
+
+**판정**: §12.2 "이후" **pause 계속**. 1차보다 더 엄격한 판정 (N=0 자연 chart page). 트리거 1·2 모두 MISS, 긴급 신호 0.
+
+**Trigger 재검토 (시기상조 결론)**: 사용자 guide("평가 2-3회 누적 후 trigger 재검토 가능, chart 자연 빈도 너무 낮으면 N=10 over-conservative")는 자연 빈도 측정 가능 후에 의미 있음. 현재 자연 chart 페이지 0 → 자연 빈도 측정 자체 불가 → trigger 갱신 시기상조. **N=10 임계 유지**.
+
+**다음 평가 시점**: 다음 두 조건 중 하나 충족 시:
+- 자연 chart 페이지 (테스트 베드 제외) **누적 N ≥ 5** 도달 시 (10 임계의 절반 — chart 빈도 자체를 측정할 첫 실측 데이터점)
+- production 페이지 (모든 슬롯 포함) **30+ 추가 누적** 시 (현재 9 → 39+) chart 자연 빈도 추정 가능 시점
+
+둘 다 이벤트 기반. 시간 기반 cron 평가 X. 다음 평가가 trigger 자체 재검토 의미 있는 첫 시점.
 
 ## 13. SEO + a11y 메타데이터 (alt_text + filename_slug) — v1.7.2-plan
 
@@ -301,6 +390,10 @@ claude-agent-sdk subagent는 자체 context 격리됨. 따라서:
 ---
 
 ## Changelog
+
+- **v1.7.4-plan** (2026-05-13): §12.2 Week 4 종결 + §12.2 "이후" path 진입 (pause). **plan only — 코드는 4fd5aa8/1ece541에서 이미 ship.** 배경: Week 4 distinct 3/3 + 회귀 0/4 모두 PASS (lab 검증 OK)이나 (a) sub_type별 production 데이터셋에서 emphasis 의미 있는지는 별 검증, (b) LLM이 본문에서 orientation/emphasis_index를 실제로 자주·적절히 결정하는지는 spike로 알 수 없음. parametric vocab 즉시 확장 X, production 사용 패턴 누적 대기. **갱신 위치**: §12.5 표에 실제 결과 row 추가 + §12.7 미결정 항목 (emphasis 다중화 / donut·pie axis 후보 / orientation 3번째) status 갱신 + 새 §12.8 — Week 5-6 진입 트리거 (N≥10 + emphasis 사용률 ≥30% OR 본문 패턴 신호) + 누적 메커니즘 (기존 token-ledger 확장, 새 시스템 X) + 긴급 진입 신호 명시. *80% plan 정신 (v1.7.3 freeze) 연속*. 다음 plan 변경은 production page 누적 후.
+
+- **v1.7.3-plan** (2026-05-12): §12.4 Week 0 spike fallback 3경로 1줄 enumerate (Sonnet 4.6 / 옵션 B skills 이동 / claude.exe + SDK 하이브리드). **Plan freeze 선언** — mid-checkpoint decision gate, falsifiable Week 4 기준, §12.5 composition phase reframing 등 후속 보강은 Week 0 spike 실측 데이터 받기 전까지 보류. 배경: plan-fixing이 회피 행동(procrastination dressed as rigor)으로 전환되는 패턴 감지. 80% plan으로 출발이 100% plan보다 빠름. 다음 plan 변경은 1주 코드 작업 후 재검토.
 
 - **v1.7.2-plan** (2026-05-12): §13 SEO + a11y 메타데이터 트랙 신설. **plan only — 코드는 별도 PR**. 배경: Notion = staging + 인간 검수 → 발행 path 확인 (caption→HTML alt 매핑 검증 불필요). alt_text(125자, SEO+a11y) + filename_slug(snake_case 영문, CDN URL) 슬롯 1쌍 LLM 생성. Notion 형식: 이미지 직후 callout block 1개 (`[ALT] ... [FILENAME] ...`). 7종 카드 공통 적용. §12 SDK migration과 완전 독립 — Week 0 spike 전 standalone PR로 ship. 가드: 사실 정확성 #1 + §23 + 길이/regex validator.
 

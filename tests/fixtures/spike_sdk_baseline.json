@@ -1,0 +1,68 @@
+{
+  "purpose": "Week 0 SDK spike baseline — §12.4 가드 1 functional equivalence (claude-agent-sdk vs claude.exe subprocess)",
+  "spec_ref": "plan v1.7.3 §12.4 — 4 checks: (1) SDK Sonnet 4.6 호출 OK (2) exact_korean_strings 1자 보존 (3) cost_usd float surfaced (4) skill markdown system_prompt inject (옵션 A)",
+  "input": {
+    "blocks": [
+      {
+        "id": "block_h2_1",
+        "type": "heading_2",
+        "text": "이혼 시 위자료 산정 기준"
+      },
+      {
+        "id": "block_p_1",
+        "type": "paragraph",
+        "text": "혼인 5년 미만은 500-800만 원, 5-10년은 800-1500만 원, 10년 이상은 1500-3000만 원이다."
+      }
+    ],
+    "model": "claude-sonnet-4-6",
+    "max_budget_usd": 0.3,
+    "system_skills": [
+      "meta/slot_selection.md",
+      "style/ehyun_visual_guide.md"
+    ]
+  },
+  "expected_facts": {
+    "preserve_strings": [
+      "혼인 5-10년",
+      "500-800만 원",
+      "800-1500만 원",
+      "1500-3000만 원"
+    ]
+  },
+  "captured_baseline": {
+    "output": {
+      "image_slots": [
+        {
+          "type": "simple_table",
+          "position_after_block_id": "block_p_1",
+          "extracted_data": {
+            "title": "혼인 기간별 위자료 기준",
+            "headers": [
+              "혼인 기간",
+              "위자료 기준"
+            ],
+            "rows": [
+              [
+                "5년 미만",
+                "500-800만 원"
+              ],
+              [
+                "5-10년",
+                "800-1500만 원"
+              ],
+              [
+                "10년 이상",
+                "1500-3000만 원"
+              ]
+            ],
+            "highlight_first_col": true
+          }
+        }
+      ]
+    },
+    "cost_usd": 0.07808265,
+    "captured_at": "2026-05-12T09:21:09+00:00",
+    "model": "claude-sonnet-4-6",
+    "method": "subprocess (claude.exe via tools.llm._common.query_json)"
+  }
+}
