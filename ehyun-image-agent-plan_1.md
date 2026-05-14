@@ -1,4 +1,4 @@
-# 이현 블로그 이미지 에이전트 — Plan (v1.7.3-plan)
+# 이현 블로그 이미지 에이전트 — Plan (v1.8.0-plan)
 
 > 노션 콘텐츠에 자동으로 이미지 카드 박는 에이전트.
 >
@@ -53,18 +53,18 @@ plan 안에서 자주 참조하는 핵심 4개:
 [status: "이미지 필요" → "발행 필요"]
 ```
 
-진입점:
-- 수동 sweep: `uv run python orchestrator.py` (`orchestrator.main()` → 인자 없음 = `process_database()` 블로그 + 웹 순차).
-- list 모드: `uv run python orchestrator.py --mode list` — "이미지 필요" 페이지(블로그 + 웹, 멱등성 filter 적용)를 `[{"page_id": "...", "source": "블로그"|"웹"}, ...]` JSON 으로 stdout 출력. cron fetch job 이 캡처해 matrix include 로 fan-out.
-- 단일 페이지: `uv run python orchestrator.py --page-id <id> --source <블로그|웹>` — matrix process job 이 cell 마다 1회 호출. 자체 RunBudget(`PER_RUN_CAP_USD`) + 멱등성 + page-level try/except + per-page cap 모두 유지.
-- 단건 수동 (legacy): `uv run python scripts/test_phase1.py <page_id> --source <블로그|웹>`.
+진입점 (v1.8 — Phase 4 진입 시 sweep 폐기, fan-out only. 사용자 컨펌 2026-05-14):
+- ~~수동 sweep: `uv run python orchestrator.py` (인자 없음)~~ → **Phase 4.1 Do 단계에서 argparse 분기 제거 예정**. 로컬 운영도 list → page-id 호출로 일원화.
+- list 모드: `uv run python orchestrator.py --mode list` — "이미지 필요" 페이지(블로그 + 웹, 멱등성 filter 적용)를 `[{"page_id": "...", "source": "블로그"|"웹"}, ...]` JSON 으로 stdout 출력. cron fetch job 이 캡처해 matrix include 로 fan-out. 로컬에서도 동일 명령으로 페이지 목록 미리보기.
+- 단일 페이지: `uv run python orchestrator.py --page-id <id> --source <블로그|웹>` — matrix process job 이 cell 마다 1회 호출. 자체 RunBudget(`PER_RUN_CAP_USD`) + 멱등성 + page-level try/except + per-page cap 모두 유지. **Phase 4 이후 주 entry point**.
+- 단건 수동 (legacy): `uv run python scripts/test_phase1.py <page_id> --source <블로그|웹>`. Phase 4 진입 시 deprecated 표시만, 즉시 삭제 X.
 - cron: **`.github/workflows/cron.yml` 2-step matrix fan-out (2026-05-14 갱신)** — `workflow_dispatch` 만 가동, `schedule` 미가동 (§10 미결정 결정 후 활성화).
   - **Job A `fetch`** (timeout 5분): checkout / setup-uv / `uv sync` 후 `uv run python orchestrator.py --mode list` 실행 → `outputs.pages` 로 JSON expose. env: `NOTION_TOKEN`, `NOTION_DB_BLOG`, `NOTION_DB_WEB`, `NOTION_DB_LOG`.
   - **Job B `process`** (timeout 15분): `needs: fetch` + `if: needs.fetch.outputs.pages != '[]'`. `strategy.matrix.include: ${{ fromJSON(needs.fetch.outputs.pages) }}` + `fail-fast: false` + `max-parallel: 5` (Notion/OpenAI rate-limit 보호). cell 마다 checkout / setup-uv / `uv sync` / `playwright install --with-deps chromium` / `bash scripts/download_fonts.sh` / `uv run python orchestrator.py --page-id "${{ matrix.page_id }}" --source "${{ matrix.source }}"`. env: 기존 cron.yml 과 동일 (`NOTION_TOKEN`, `NOTION_DB_BLOG`, `NOTION_DB_WEB`, `NOTION_DB_LOG`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` 필수 + `OPENAI_IMAGE_MODEL_INSTANT/THINKING` 선택).
   - **`PER_RUN_CAP_USD` 의미 변화**: 기존 단일 job 에서는 블로그 + 웹 sweep 누적 cap 이었으나, matrix 에서는 **cell 1개당 cap** 으로 작동 (각 cell 이 별 process). 총 spend = pages × `PER_PAGE_CAP_USD` (worst case). max-parallel 5 + `_DEFAULT_BATCH_LIMIT = 5` per-DB 로 한 run 당 페이지 10개 cap 자연 제한.
   - 사용자 별 작업: GitHub repo Settings → Secrets and variables → Actions 에 secret 박기 (변경 없음).
 
-## 4. 카드 카탈로그 (활성 7종)
+## 4. 카드 카탈로그 (활성 7종, v1.8 — illustration → ai_visual 전환 진행 중)
 
 | 카드 | 종류 | When | 상세 |
 |---|---|---|---|
@@ -73,14 +73,15 @@ plan 안에서 자주 참조하는 핵심 4개:
 | `comparison_table` | 정보형 template | 법적 절차/유형 비교 (협의 vs 재판). 다른 법무법인 비교 X (§23) | [skill](skills/image_types/comparison_table.md) |
 | `key_points_card` | 정보형 template | 핵심 N가지 / 준비 서류 / 체크리스트 (3-5개) | [skill](skills/image_types/key_points_card.md) |
 | `timeline` | 정보형 template | 4-6 순차 단계 (법률 절차 / 소송 흐름) | [skill](skills/image_types/timeline.md) |
-| `illustration` | 감성형 AI instant | 도입부 사연/분위기 (라인 일러스트 단일 스타일) | [skill](skills/image_types/illustration.md) |
+| `ai_visual` ★ Phase 4.2 신설 | 감성형 AI | 도입부 사연/분위기 / 콘텐츠 전환부 호흡 분기. LLM 이 본문 보고 [Visual Styles Library](docs/visual_styles_library_v1.md) 5종 중 best fit 결정 | §14 + [docs/visual_styles_library_v1.md](docs/visual_styles_library_v1.md) |
 | `kakao_dialogue` | 감성형 AI thinking | 본문 카톡 대화 시나리오 재현 | [skill](skills/image_types/kakao_dialogue.md) |
+| ~~`illustration`~~ deprecated (v1.8) | — | `ai_visual.visual_style=point_color_line` 로 흡수. 운영 인지 후 skill/code 제거 | §14.1 |
 
-**페이지당 mix 룰** → [CLAUDE.md](CLAUDE.md) 절대 룰 #5 (정보형 1-2 + 감성형 1-2 mix / 금지 패턴 명세). mix 알고리즘 → `skills/meta/slot_selection.md`.
+**페이지당 mix 룰** → [CLAUDE.md](CLAUDE.md) 절대 룰 #5 + §14.5 슬롯 3 cap (v1.8 하향). mix 알고리즘 → `skills/meta/slot_selection.md` (Phase 4.2 Do 단계 갱신 예정).
 
 **카드 카테고리별 사실 정확성**:
 - 정보형 + kakao_dialogue: 본문 1자 변경 X (절대 룰 #1 엄격)
-- illustration: scene/mood는 합성 OK. 이미지 안 텍스트 0 강제.
+- ai_visual: scene/mood/accent_target 은 합성 OK. 이미지 안 텍스트 0 강제 (vision 검증 = §19.16 Phase 4.3 진입 트리거).
 
 **Phase 4 검토 archive** (운영 데이터로 결정): `stat_highlight` (v1.5 정의 보존), `document_excerpt` (v1.5 정의 보존), `webtoon`, `app_ui_mockup`. spec → [plan_history.md](plan_history.md).
 
@@ -150,17 +151,21 @@ plan 안에서 자주 참조하는 핵심 4개:
 
 ## 10. 미결정 사항
 
-> **"Phase 4" 정의**: 운영 안정화 + archive 카드 활성화 + 비용 cap 복귀 단계 (Phase 3 v1.6.4 직후). §12 SDK migration 로드맵은 **병렬 트랙** — SDK migration scope 미결정은 §12.7 참조.
+> **"Phase 4" 정의 (v1.8 갱신)**: 운영 안정화 + **감성형 카드 사상 재설계 (illustration → ai_visual + Visual Styles Library)** + **토스피드 톤 정합 (정보형 light gray 배경 fix)** + **vision OCR 텍스트 환각 검증 (§19.16 실구현)** + archive 카드 활성화 + 비용 cap 복귀 단계. 상세 §14. §12 SDK migration 로드맵은 **병렬 트랙** — SDK migration scope 미결정은 §12.7 참조.
 
 | 항목 | 결정 시점 |
 |---|---|
 | cron schedule 활성화 (workflow_dispatch → schedule) | `cron.yml` 2-step matrix fan-out 작성 완료 (2026-05-14, `workflow_dispatch` only — §3 참조). `schedule` 라인 추가는 운영자 검수 부담 결정과 함께 별 트랙. |
 | chatgpt-image-latest 비교 | OpenAI organization verification 완료 후 (15분 propagate) |
-| gpt-image-1.5 콘텐츠별 라우팅 | 5/12 비교에서 라인 일러스트 톤 최고였음. 운영 데이터로 결정. |
-| kakao_dialogue OCR Levenshtein 검증 | kakao 실제 trigger 시 추가 (현재 0건). §12.6 subagent 활성화도 이 시점에 연동. |
-| Phase 4 검토 카드 (stat_highlight / document_excerpt / webtoon / app_ui_mockup) 활성화 | 운영 데이터 + 콘텐츠 적합도 |
-| 페이지 cap $1.20 복귀 | analyze prompt 슬림 + slot_selection 다이어트 후 |
+| gpt-image-1.5 콘텐츠별 라우팅 | 5/12 비교에서 라인 일러스트 톤 최고였음. 운영 데이터로 결정. Visual Styles Library (§14.2) `point_color_line` 운영 1주 후 비교 데이터 확보. |
+| kakao_dialogue OCR Levenshtein 검증 | kakao 실제 trigger 시 추가 (현재 0건). §12.6 subagent 활성화도 이 시점에 연동. §19.16 Phase 4.3 vision review 인프라와 연동. |
+| Phase 4 검토 카드 (stat_highlight / document_excerpt / webtoon / app_ui_mockup) 활성화 | 운영 데이터 + 콘텐츠 적합도. v1.8 `ai_visual` 가 일부 use-case 흡수 가능성 있어 활성화 보류. |
+| 페이지 cap $1.20 복귀 | analyze prompt 슬림 + slot_selection 다이어트 + **슬롯 3 cap (v1.8, §14.5)** 후 재측정. |
 | 실패 알림 채널 (이메일 → Slack/Discord) | 운영 안정화 후 |
+| **v1.8 신규** — vision review 모델 실측 spike (Sonnet 4.6 vision, 사용자 컨펌 2026-05-14) | Phase 4.3 Design 첫 작업. 한글 OCR 정확도 / latency / cost 1페이지 실측 후 PER_SLOT_VISION_COST cap 결정. |
+| **v1.8 신규** — `quality=high` (cinematic_three_frame) 실비 vs 추정 ($0.25/장) 차이 | Phase 4.2 Do 첫 5건 e2e 후. PER_SLOT_COST_CAP_USD ($0.30) 안전 마진 결정. |
+| **v1.8 신규** — reference image 의 LLM 매칭 품질 영향 | Phase 4.2 Do 1주 운영 후 (reference 있는 스타일 vs 없는 스타일 폐기율 비교). |
+| **v1.8 신규** — `ai_visual` 슬롯 2개 trigger 시 같은 visual_style 연속 허용 여부 | Phase 4.2 Do — §19.17 mix 룰 갱신과 연동. |
 
 ## 11. 사용자 사전 작업 체크리스트
 
@@ -407,9 +412,244 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 - `filename_slug` 한글→영문 변환 룰 — 첫 PR은 LLM이 영문 키워드 기반 생성 (음역 X). 운영 후 결정.
 - 7종 카드 *공통* 룰 vs *카드별* 룰 — 첫 PR은 공통. illustration처럼 데이터 없는 카드는 prompt에 별도 가이드 필요할 수 있음.
 
+## 14. Phase 4 — 감성형 카드 사상 재설계 + 토스피드 톤 정합 (v1.8-plan)
+
+> **한 줄 사상**: gpt-image-2-2026-04-21 한글 정확도 ↑ + 토스피드 톤("소프트 에디토리얼 미니멀리즘")과 정합 ↑ 를 동시 ship. illustration 단일 스타일 → 스타일 라이브러리(5종), LLM 본문 보고 best fit 선택. 정보형 카드 배경 light gray 로 fix, 텍스트 환각은 vision OCR 로 차단.
+>
+> **3단계 ship**: 4.1 정보형 톤 fix (1-2일) → 4.2 ai_visual + 스타일 라이브러리 (4-7일) → 4.3 vision OCR (3-5일).
+
+### 14.1 배경
+
+- 카드 배경 `#ffffff` 강제가 토스피드 톤과 불일치. drift 발생 위치 3곳: `styles/ehyun_default.yaml:87` `card_defaults.background: '#ffffff'` + `templates/_base.css:147` `.card { background: var(--neutral-0) }` + `tools/render/ai_render.py:58` `"clean white background"`.
+- `reference_library/_meta.yaml` (chart 정의에서 `background: light_gray` 명시) **파일 자체가 존재하지 않음** (커밋 이력 0회). CLAUDE.md "발견된 drift" 항목은 *의도 명시 파일 부재* 가 진짜 원인 — Phase 4.1 Do 에서 meta.yaml 신설 또는 yaml 토큰 직접 갱신 결정.
+- gpt-image-2-2026-04-21 한글 정확도가 v1.6.4 이후 상승 → AI 활용 비율 상향 정당화.
+- 기존 illustration "라인 일러스트 단일 스타일 고정" → 콘텐츠 톤 다양성 부족. 본문 context 에 맞는 best fit 스타일 선택 필요.
+
+### 14.2 Phase 4.1 — 정보형 카드 토스피드 톤 fix (1-2일)
+
+**범위**: 정보형 5종 (`simple_table` / `chart` / `comparison_table` / `key_points_card` / `timeline`) HTML+CSS 를 토스피드 reference 와 동기화. **사실 정확성 절대 룰 #1 유지** — template path 보존 (사실 데이터 1자 변경 X). drift 처리 룰에 따라 plan 먼저 갱신 (본 §14 = SOT), 이후 코드 동기화.
+
+**"소프트 에디토리얼 미니멀리즘" 핵심 8 패턴** (정보형 fix 기준):
+
+| # | 패턴 | 코드 위치 |
+|---|---|---|
+| 1 | 배경 light warm gray (`#eaeaea` 톤 대) | `styles/ehyun_default.yaml` `card_defaults.background` + `templates/_base.css` `.card { background }` |
+| 2 | 카드 padding 80-100px 느낌 (현재 60px → 80px sp-3xl 사용) | `templates/_base.css` `.card { padding }` |
+| 3 | 제목 좌상단 매우 bold (`--fw-bold` 유지, 위치만 좌상단 anchor) | `templates/_base.css` `.card__title` |
+| 4 | 컬러 monochromatic 2-3색 + warm accent 1 (`brand.primary` + neutral + `chart.accent_warm`) — 현 정책 유지, 컬러 토큰 변경 X |
+| 5 | 그리드 가로만 매우 옅음 (chart x-axis grid hidden, y-axis grid `neutral-200`) | `templates/master_chart.html` Chart.js config |
+| 6 | 출처 좌하단 작고 옅게 (`--font-small` + `--neutral-400` 유지) — 현 정책 유지 |
+| 7 | 데코레이션 0 (아이콘/일러스트/그림자/그라데이션 X) — 현 정책 유지, 신규 카드 작성 시 가드 |
+| 8 | 콘텐츠:여백 ≈ 50:50 (현재 padding 60 + 콘텐츠 짧으면 여백 부족 케이스 발생) | `.card` height 자동 + min-height 정책 재검토 |
+
+**산출물 (Phase 4.1 Do)**:
+- `styles/ehyun_default.yaml` 토큰 갱신 (background, padding 등)
+- `templates/_base.css` `.card` 배경/padding 동기화
+- `templates/*.html` 5종 layout 미세 조정
+- `tools/render/ai_render.py:_build_illustration_prompt` 의 "clean white background" 표현 → "soft light gray warm neutral background" 로 정합 (Phase 4.2 deprecate 전까지 잠정)
+- (옵션) `reference_library/_meta.yaml` 신설 — 카드별 reference image 의도 명시
+
+**Done 정의 (4.1)**:
+- 5종 정보형 카드 e2e 1건 렌더 → 토스피드 reference 시각 비교 사용자 OK
+- 사실 데이터 회귀 0 (`tests/fixtures/chart_*.json` SHA byte-identical 또는 OCR diff 0 — §12.2 Week 3a 회귀 검증 방식 답습)
+- mobile 가독성 40px+ 유지
+
+### 14.3 Phase 4.2 — `ai_visual` 카드 + 스타일 라이브러리 (4-7일)
+
+**범위**: `illustration` 카드 deprecate → 새 카드 `ai_visual` 신설. LLM 이 본문 context + `skills/visual_styles/*.md` frontmatter 보고 best fit 스타일 결정.
+
+**상세 정의** → [docs/visual_styles_library_v1.md](docs/visual_styles_library_v1.md) (5종 스타일 frontmatter + 자연어 prompt + 운영 룰).
+
+**초기 5종 (사용자 확정 2026-05-14)**:
+1. `point_color_line` — 포인트 컬러 라인 일러스트 (기존 illustration 톤 보존)
+2. `miniature_stock` — 미니어처 스톡 이미지
+3. `korean_court_scene` — 한국 법원 실제 풍경
+4. `blueprint_poster` — 블루프린트 포스터
+5. `cinematic_three_frame` — 시네마틱 3-프레임 필름 (사용자 제공 자연어 prompt)
+
+**메타 구조** — frontmatter 필수 6 + 선택 3 (사용자 컨펌 2026-05-14):
+- 필수: `name` / `tone` / `use_when` / `prompt_template` / `aspect_ratio` / `text_rule`
+- 선택: `reference_dir` / `quality` / `accent_target_default`
+
+**비율 정책 — A안 fix (사용자 컨펌 2026-05-14)**: 스타일별 비율 자유. frontmatter `aspect_ratio` 필드가 SOT.
+- default 4종 → `1536x1024` (3:2 landscape)
+- cinematic_three_frame → `1024x1536` (2:3 portrait, 사용자 원문 "가로 프레임을 세로로 쌓은 형태" 정합)
+
+**텍스트 룰** — 스타일별 `text_rule` 필드로 분기:
+- 5종 초기 모두 `zero` (텍스트 0 강제). vision 검증 = §19.16 (Phase 4.3 진입 트리거).
+- `factual` (본문 사실 인용 OK) 스타일 추가는 vision OCR Levenshtein 인프라 완비 후 (§19.11 카드별 분기 갱신).
+
+**운영 — 사용자 스타일 추가**: `skills/visual_styles/<name>.md` 1개 + `reference_library/visual_styles/<name>/` 폴더 1개 추가하면 LLM 이 자동 인식 (analyze_content 가 디렉터리 scan). 코드 변경 0.
+
+**산출물 (Phase 4.2 Do)**:
+- 새 디렉터리: `skills/visual_styles/` (5개 md) + `reference_library/visual_styles/` (5개 폴더, reference image 운영하며 추가)
+- `tools/render/ai_render.py:_build_illustration_prompt` deprecate → `_build_ai_visual_prompt` 신설 (스타일 frontmatter load + placeholder 치환)
+- `tools/llm/analyze_content.py` 스타일 매칭 단계 추가 (감성형 슬롯 trigger 시 `skills/visual_styles/*.md` 디렉터리 scan → LLM 매칭 prompt inject)
+- `orchestrator.SUPPORTED_TYPES` 에 `ai_visual` 추가, `AI_CARD_TYPES` 갱신, `_render_slot` 분기 1개
+- `skills/image_types/illustration.md` deprecate 표시 (즉시 삭제 X — 운영 인지 후)
+- 노션 로그 DB `타입` select 옵션 `ai_visual` 자동 생성 (5/12 검증된 자동 추가 메커니즘 활용)
+- 새 슬롯 스키마: `extracted_data.visual_style` (str, name 매칭) + 기존 `scene` / `mood` / `accent_target` / `alt_text` / `footnote?`
+
+**Done 정의 (4.2)**:
+- 5종 스타일 각 1회 e2e trigger 성공 (운영 페이지 또는 fixture)
+- `quality=high` (cinematic_three_frame) 실비 측정 → `PER_SLOT_COST_CAP_USD` 안전 마진 확인 (`$0.30` cap, $0.25 예상)
+- 사용자 스타일 추가 절차 1회 dry-run 검증 (운영자가 md + 폴더 추가 → 다음 trigger 자동 인식)
+- 슬롯 3 cap 적용 (§14.5)
+
+### 14.4 Phase 4.3 — vision OCR 텍스트 환각 검증 (3-5일)
+
+**범위**: §19.16 (plan_history) paper-only → 실구현 격상. 모든 AI 카드 산출물을 vision LLM 이 평가:
+- 텍스트 검출 (스타일 `text_rule=zero` 인 경우) → 텍스트 픽셀 ≥ 1% 또는 OCR token ≥ 3개 → retry 1회 → 폐기
+- `kakao_dialogue` 한글 정확성 (Levenshtein ≤ 2) — §19.11 카드별 분기 코드 작업
+- 변호사법 §23 키워드 이미지 텍스트 검사 — vision OCR 추출 → `tools/compliance/keywords.py:check_keywords` 호출
+
+**vision 모델 — Claude Sonnet 4.6 vision (사용자 컨펌 2026-05-14)**:
+- 기존 SDK 인프라 (`tools/llm/_common.py:query_json` + `claude-agent-sdk` 0.1.77) 그대로 재사용
+- `token-ledger.ndjson` 비용 계상 일관성 ✓
+- §23 LLM reasoning 정확성: 기존 review.py 와 같은 모델 → reasoning 톤 일관
+- OCR 정확도 / latency / cost 1페이지 실측 spike → Phase 4.3 Design 첫 작업 (§10 미결정 row)
+
+**산출물 (Phase 4.3 Do)**:
+- `tools/render/vision_review.py` (신규) — 이미지 → vision LLM → JSON {text_detected, text_pixels_pct, ocr_tokens, korean_text, §23_violations}
+- `tools/llm/review.py` 또는 별 `image_review.py` — vision_review 호출 + 슬롯 폐기 분기 + 로그
+- `tools/limits.py` — `PER_SLOT_VISION_COST_USD` 신설 (예상 $0.05/슬롯)
+- 노션 로그 DB row 추가 필드 (옵션) — `vision_review_passed: checkbox`, `vision_review_reason: rich_text`
+
+**Done 정의 (4.3)**:
+- 5종 스타일 각 1회 + kakao_dialogue 1회 vision_review 통과
+- 텍스트 환각 의도적 시뮬레이션 1건 → 폐기 동작 확인
+- §23 키워드 이미지 텍스트 1건 시뮬레이션 → 폐기 동작 확인
+- `PER_SLOT_VISION_COST_USD` 5건 실측 평균 < $0.10
+
+### 14.5 페이지당 슬롯 cap — 3개로 하향 (v1.8)
+
+**배경**: 현재 `skills/meta/slot_selection.md` "페이지당 슬롯 2-4개 권장" (v1.6 상향). v1.8 ai_visual 도입 + quality=high 스타일 (cinematic) 비용 변동성 + vision review 슬롯당 cost 추가 → 페이지 cap 안전 마진 필요.
+
+**갱신**:
+- 페이지당 슬롯 **3 cap 고정** (이전 2-4 권장 → 3 hard cap)
+- mix 권장: 정보형 1-2 + 감성형 1-2, **합 ≤ 3**
+- 4개+ trigger 시 slot_selection 결과에서 우선순위 낮은 1개 폐기 + warning 로그
+
+**갱신 위치**:
+- `skills/meta/slot_selection.md` "Page-level mix 권장 룰" 섹션 (Phase 4.2 Do)
+- [CLAUDE.md](CLAUDE.md) 절대 룰 #5 mix 룰 (Phase 4.2 Do, plan 동기화 후)
+- §19.17 (plan_history.md) — 슬롯 3 cap 명시 추가
+
+### 14.6 Phase 4 진입 체크리스트
+
+#### 4.1 진입 prerequisite
+- [x] Phase 3 v1.6.4 종료 게이트 통과 (kakao_dialogue trigger 0 미해결만 제외)
+- [x] CLAUDE.md drift 항목 1차 정리 (이 §14 SOT 갱신 완료)
+- [x] 사용자 컨펌 미해결 §1/§3/§4/§5 fix (2026-05-14)
+
+#### 4.1 Done
+- [ ] 정보형 5종 토스피드 reference 비교 사용자 OK
+- [ ] `styles/ehyun_default.yaml` + `templates/_base.css` 토큰 동기
+- [ ] 회귀 검증 0 (사실 데이터 SHA / OCR diff)
+- [ ] mobile 40px+ 유지
+
+#### 4.2 진입 prerequisite
+- [ ] 4.1 Done 모두 통과
+- [ ] `docs/visual_styles_library_v1.md` 5종 스타일 frontmatter draft 사용자 OK
+
+#### 4.2 Done
+- [ ] `skills/visual_styles/` 5개 + `reference_library/visual_styles/` 5개 폴더
+- [ ] `ai_visual` 카드 e2e 5종 스타일 각 1회 trigger 성공
+- [ ] `illustration` skill `[deprecated]` 표시 (즉시 삭제 X)
+- [ ] 슬롯 3 cap 적용
+- [ ] `quality=high` 실비 측정 → PER_SLOT_COST_CAP_USD 안전 확인
+- [ ] 사용자 스타일 추가 dry-run 1회 검증
+- [ ] sweep 폐기 (`orchestrator.main()` argparse 분기 단순화 — list / page-id 만)
+
+#### 4.3 진입 prerequisite
+- [ ] 4.2 Done 모두 통과
+- [ ] vision 모델 spike 1페이지 (Sonnet 4.6 vision) → cost/accuracy/latency 측정
+
+#### 4.3 Done
+- [ ] `tools/render/vision_review.py` 신설 + 슬롯 폐기 분기
+- [ ] 텍스트 환각 / §23 키워드 / kakao OCR Levenshtein 3종 분기 동작
+- [ ] `PER_SLOT_VISION_COST_USD` 5건 실측 평균 < $0.10
+- [ ] §19.16/§19.17 plan_history 상 paper-only → implemented 격상
+- [ ] 페이지 cap $1.20 복귀 검토 (§10 미결정)
+
+### 14.7 비용 시뮬레이션 — 페이지당 슬롯 3 cap 가정
+
+**기준 단가** (실측 + `tools/limits.py:GPT_IMAGE_PRICE_USD` + OpenAI 공식 docs):
+
+| 항목 | medium 시나리오 | high 시나리오 | 출처 |
+|---|---|---|---|
+| analyze_content | $0.35 | $0.35 | 5/12 실측 cache hit 평균 ($0.26 mean, $0.34 max — `tools/limits.py:ANALYZE_BUDGET_USD=$0.80` cap 안전) |
+| review_input × 3 슬롯 | $0.15 | $0.15 | 슬롯당 $0.05, REVIEW_BUDGET_USD=$0.30 cap |
+| gpt-image 1536×1024 medium × 1-2 슬롯 | $0.063-$0.126 | — | `GPT_IMAGE_PRICE_USD[("1536x1024","medium")] = $0.063` |
+| gpt-image 1024×1536 high × 1 슬롯 (cinematic) | — | $0.25 | `GPT_IMAGE_PRICE_USD[("1024x1536","high")] = $0.25` |
+| vision_review × 3 슬롯 (Phase 4.3) | $0.15 | $0.15 | 슬롯당 $0.05 추정, Sonnet 4.6 vision spike 후 확정 |
+
+**페이지 총 비용 — 슬롯 3 cap (정보형 1-2 + 감성형 1-2 mix)**:
+
+| 시나리오 | 구성 | 총 비용 | PER_PAGE_CAP $2.50 안전 마진 |
+|---|---|---|---|
+| **medium 전형** | analyze + review×3 + gpt-image medium×2 + vision×3 | $0.35 + $0.15 + $0.126 + $0.15 = **$0.78** | $1.72 |
+| **medium + cinematic 1** | analyze + review×3 + gpt-image medium×1 + gpt-image high×1 + vision×3 | $0.35 + $0.15 + $0.063 + $0.25 + $0.15 = **$0.96** | $1.54 |
+| **high 풀** (cinematic + thinking 2개) | analyze + review×3 + gpt-image high×2 + vision×3 | $0.35 + $0.15 + $0.50 + $0.15 = **$1.15** | $1.35 |
+| **edge case** (analyze 폭주 $0.80 + high 풀) | analyze + review×3 + gpt-image high×2 + vision×3 | $0.80 + $0.15 + $0.50 + $0.15 = **$1.60** | $0.90 |
+
+**월 비용 (40편 기준, medium 전형 가정)**: 40 × $0.78 = **~$31**. 페이지 cap $1.20 복귀 시 $48 cap 내. 현재 $2.50 cap 은 edge case 안전 마진 + 5/12 실측 $0.96 (illustration 포함) 대응.
+
+**상수 갱신 후보 (Phase 4.3 Done 후 결정)**:
+- `PER_SLOT_VISION_COST_USD = 0.10` 신설 (spike 후 확정)
+- `PER_PAGE_CAP_USD` $2.50 유지 또는 $1.50 으로 단계 하향 (slot 3 cap + vision 인프라 안정화 후)
+
+### 14.8 영향 받는 코드 영역 (Phase 4.1/4.2/4.3 Do 단계 작업, 본 Plan 세션 = 변경 0)
+
+| 영역 | 단계 | 파일 | 변경 종류 |
+|---|---|---|---|
+| 디자인 토큰 | 4.1 | `styles/ehyun_default.yaml` | background / padding / sp-3xl 활용 |
+| CSS | 4.1 | `templates/_base.css` | `.card { background, padding }` |
+| HTML 정보형 5종 | 4.1 | `templates/{simple_table,master_chart,comparison_table,key_points_card,timeline}.html` | layout 미세 조정 |
+| chart axis | 4.1 | `templates/master_chart.html` Chart.js config | x-axis grid hidden, y-axis `neutral-200` |
+| reference meta | 4.1 | `reference_library/_meta.yaml` (옵션) | 신설 또는 yaml 토큰 갱신으로 대체 |
+| AI prompt builder | 4.2 | `tools/render/ai_render.py` | `_build_illustration_prompt` deprecate → `_build_ai_visual_prompt` 신설 |
+| analyze 매칭 | 4.2 | `tools/llm/analyze_content.py` | 감성형 슬롯 trigger 시 `skills/visual_styles/*.md` 디렉터리 scan + LLM 매칭 prompt |
+| orchestrator | 4.2 | `orchestrator.py` | `SUPPORTED_TYPES` + `AI_CARD_TYPES` + `_render_slot` 분기, **sweep 모드 폐기** (argparse 분기 단순화) |
+| skill | 4.2 | `skills/image_types/illustration.md` | deprecate 표시 |
+| 신규 디렉터리 | 4.2 | `skills/visual_styles/` + `reference_library/visual_styles/` | 5종 스타일 md + reference 폴더 |
+| slot_selection | 4.2 | `skills/meta/slot_selection.md` | mix 룰 갱신 (슬롯 3 cap, ai_visual 통합) |
+| vision review | 4.3 | `tools/render/vision_review.py` (신규) | Sonnet 4.6 vision 호출 + JSON 반환 |
+| §19 격상 | 4.3 | `plan_history.md` §19.16/§19.17 | paper-only → implemented 격상 |
+| 비용 상수 | 4.3 | `tools/limits.py` | `PER_SLOT_VISION_COST_USD` 신설 + 페이지 cap 재검토 |
+| CLAUDE.md 동기 | 4.1-4.3 각 단계 | `CLAUDE.md` | 절대 룰 #5 (카드 라인업) + 운영 가드 §19.16/17 격상 명시 |
+
+### 14.9 미해결 (Plan 작성 중 컨펌받은 결과 + 향후 결정)
+
+**해소 (사용자 컨펌 2026-05-14)**:
+
+| # | 항목 | 결정 |
+|---|---|---|
+| §1 | cinematic 비율 vs 3:2 default 충돌 | A안 — 스타일별 `aspect_ratio` 자유. cinematic 만 2:3, 나머지 3:2. |
+| §3 | vision review 모델 | Claude Sonnet 4.6 vision (SDK 인프라 재사용). Phase 4.3 Design 첫 작업 1페이지 spike. |
+| §4 | 스타일 라이브러리 frontmatter | 필수 6 (`name`/`tone`/`use_when`/`prompt_template`/`aspect_ratio`/`text_rule`) + 선택 3 (`reference_dir`/`quality`/`accent_target_default`). |
+| §5 | sweep 모드 폐기 여부 | Phase 4 진입 시 sweep 폐기, fan-out only. orchestrator.main() argparse 분기 단순화. |
+
+**Phase 4 진입 후 미해결** → §10 `v1.8 신규` 4개 row 참조 (high quality 실비 / reference 매칭 영향 / 같은 visual_style 연속 / vision 모델 spike).
+
 ---
 
 ## Changelog
+
+- **v1.8.0-plan** (2026-05-14): Phase 4 (감성형 카드 사상 재설계 + 토스피드 톤 정합) plan 신설. **plan only — 코드 변경 0**.
+  - **배경**: (a) 카드 배경 `#ffffff` 강제가 토스피드 톤("소프트 에디토리얼 미니멀리즘")과 불일치 (drift 3곳: `styles/ehyun_default.yaml:87` + `templates/_base.css:147` + `tools/render/ai_render.py:58`). (b) gpt-image-2-2026-04-21 한글 정확도 ↑ → AI 활용 비율 상향 정당화. (c) illustration 단일 스타일 한계 → 콘텐츠 톤 다양성 부족. (d) §19.16 vision OCR 텍스트 환각 검증이 paper-only 인 상태로 ai_visual ship 시 §23 / 사실 정확성 위반 리스크.
+  - **해결**: 3단계 ship — **4.1 정보형 톤 fix** (1-2일, light gray 배경 + padding/typography 정합) → **4.2 `ai_visual` 카드 + 스타일 라이브러리 5종 신설** (4-7일, LLM 본문 보고 best fit 선택, 사용자가 md + reference 폴더 추가하면 자동 인식) → **4.3 vision OCR 검증** (3-5일, Claude Sonnet 4.6 vision, §19.16/§19.17 paper → implemented 격상).
+  - **갱신 위치**:
+    - §4 카드 카탈로그 — `illustration` deprecated 표시 + `ai_visual` 신설 row 추가
+    - §3 진입점 — sweep 모드 폐기 명시 (Phase 4.1 Do)
+    - §10 미결정 — `v1.8 신규` 4개 row 추가 (vision spike / high quality 실비 / reference 영향 / 같은 visual_style 연속)
+    - **새 §14** "Phase 4 — 감성형 카드 사상 재설계 + 토스피드 톤 정합" 섹션 (4.1/4.2/4.3 spec + 진입 체크리스트 + 비용 시뮬레이션 + 영향 코드 enumerate)
+    - 새 [docs/visual_styles_library_v1.md](docs/visual_styles_library_v1.md) — 5종 스타일 상세 정의 (frontmatter sample + 자연어 prompt + cinematic 사용자 원문 인용)
+    - plan_history.md §19.16/§19.17 — Phase 4.3 진입 트리거 + 슬롯 3 cap 명시 갱신
+  - **사용자 컨펌 (2026-05-14, §14.9)**: ①시네마틱 비율 → A안 스타일별 자유 (cinematic 만 2:3, 나머지 3:2). ③vision 모델 → Claude Sonnet 4.6 vision. ④frontmatter → 필수 6 + 선택 3. ⑤sweep → 폐기, fan-out only.
+  - **코드 변경 영역 (Phase 4 Do 단계, 본 세션 = 0)**: §14.8 표 참조. 신규: `skills/visual_styles/`, `reference_library/visual_styles/`, `tools/render/vision_review.py`. 갱신: `styles/ehyun_default.yaml`, `templates/_base.css`, `templates/*.html`, `tools/render/ai_render.py`, `tools/llm/analyze_content.py`, `orchestrator.py`, `skills/meta/slot_selection.md`, `skills/image_types/illustration.md`, `tools/limits.py`, `CLAUDE.md`.
+  - **비용 영향**: PER_PAGE_CAP_USD $2.50 유지 (medium 전형 페이지 $0.78, edge case $1.60). vision_review 슬롯당 $0.10 추정. 슬롯 3 cap 하향으로 페이지 비용 ceiling 안정.
+  - **branch**: `feat/phase4-visual-styles` (main 분기). Plan PR → 머지 후 Phase 4.1 Design 별 세션 진입.
 
 - **v1.7.5-plan** (2026-05-14): `.github/workflows/cron.yml` **2-step matrix fan-out** 갱신. 배경: 직전 cron run 실측 — 블로그 1건(7:15) + 웹 1건(7:28) 완료, 웹 2번째 페이지 처리 중 `timeout-minutes: 20` 도달해 cancel. 페이지당 7-8분 × 페이지 N → 단일 job 구조는 N ≥ 3 부터 timeout 노출. **해결**: page 단위 fan-out — fetch job (5분) 이 "이미지 필요" 페이지 목록 JSON 출력 → process job matrix (cell 별 15분, fail-fast: false, max-parallel: 5) 가 페이지 1개씩 병렬 처리. 총 wall-clock = max(페이지 처리 시간), 페이지 수 N 무관. **갱신 위치**: §3 진입점 (list 모드 / page-id 모드 / cron 2-step 설명 추가) + §10 cron schedule row (fan-out 작성 완료 명시) + §12.8.3 (matrix 구조 명시). **코드 변경**: `orchestrator.py` argparse 분기 (`--mode list` / `--page-id+--source` / 인자 없음 sweep) 추가, `process_database` / `run_for_page` 본체 보존. **PER_RUN_CAP_USD 의미 변화**: 기존 sweep 누적 cap → matrix cell 당 cap (cell 이 별 process). 총 spend = pages × PER_PAGE_CAP_USD worst case, max-parallel 5 + per-DB limit 5 로 자연 제한.
 

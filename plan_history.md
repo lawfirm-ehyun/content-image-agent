@@ -114,22 +114,25 @@ AI (gpt-image thinking) — Image 6 톤 (warm off-white 종이, serif 본문, br
   - 1회 실행 안에서 페이지 처리 시도 + 실패 비율 ≥ 50%이면 즉시 exit code 1
 - **현재 상태**: cron schedule 미가동 (workflow_dispatch만). 운영 진입 시 추가.
 
-### §19.16 illustration 텍스트 환각 차단 (paper)
-- **위험**: gpt-image가 illustration prompt에 "텍스트 금지" 명시해도 임의로 한글·영문 박을 수 있음 (특히 간판/포스터/책 표지 장면). 환각 텍스트 → 한국 맥락 위반 / §23 위반 / 사실 정확성 위반.
+### §19.16 AI 카드 텍스트 환각 차단 (Phase 4.3 진입 트리거 — plan v1.8.0)
+- **위험**: gpt-image 가 AI 카드 prompt 에 "텍스트 금지" 명시해도 임의로 한글·영문 박을 수 있음 (특히 간판/포스터/책 표지/법원 표지 장면). 환각 텍스트 → 한국 맥락 위반 / §23 위반 / 사실 정확성 위반. v1.8 `ai_visual` 5종 스타일 모두 `text_rule=zero` 로 출범 → 본 가드 implementation 이 ai_visual ship 의 prerequisite.
 - **룰**:
-  - image_review vision으로 이미지 안 텍스트 영역 감지
-  - 텍스트 픽셀 비율 > 1% 또는 OCR token ≥ 3개: 환각 의심
-  - retry 1회 (gpt-image 다른 seed + prompt에 "no text" 강조)
-  - 그래도 텍스트 있으면 슬롯 폐기
-- **현재 상태**: 5/12 e2e에서 gpt-image-2가 자체적으로 텍스트 환각 0건 — vision 검증 미구현, 운영 후 trigger 보고 결정.
+  - vision_review (Claude Sonnet 4.6 vision, 사용자 컨펌 2026-05-14) 로 이미지 안 텍스트 영역 감지
+  - 텍스트 픽셀 비율 > 1% 또는 OCR token ≥ 3개 또는 한글/영문 단어 detect: 환각 의심
+  - retry 1회 (gpt-image 다른 seed + prompt 에 "no text" 강조)
+  - 그래도 텍스트 있으면 슬롯 폐기 + 로그 DB row 폐기 reason 기록
+- **§23 키워드 이미지 텍스트 검사 동반**: vision OCR 추출 텍스트 → `tools/compliance/keywords.py:check_keywords` 호출 (4 카테고리 regex). hit 시 즉시 폐기.
+- **현재 상태**: 5/12 e2e 에서 gpt-image-2 자체 텍스트 환각 0건이지만, ai_visual 5종 + cinematic high quality 도입으로 환각 확률 ↑ 예상. **Phase 4.3 진입 트리거 — paper-only → implemented 격상 (plan §14.4)**. 신규 파일 `tools/render/vision_review.py`, 비용 상수 `PER_SLOT_VISION_COST_USD` (예상 $0.05-$0.10/슬롯, Phase 4.3 Design spike 후 확정).
 
-### §19.17 mix 정책 위반 검증 (paper, Phase 3 권장)
-- **위험**: slot_selection이 감성형만 trigger / 같은 카드 3개+ 연속 / kakao 2개+ in 페이지 → 콘텐츠 가치 결여, 시각 단조로움.
-- **룰** (slot_selection 결과 검증):
+### §19.17 mix 정책 위반 검증 (Phase 4.2 진입 트리거 — plan v1.8.0)
+- **위험**: slot_selection 이 감성형만 trigger / 같은 카드 3개+ 연속 / kakao 2개+ in 페이지 / **페이지당 슬롯 4개+ (v1.8 슬롯 3 cap 위반)** → 콘텐츠 가치 결여, 시각 단조로움, 비용 폭주.
+- **룰** (slot_selection 결과 검증, v1.8 갱신):
+  - **페이지당 슬롯 3 cap (v1.8 hard cap, 이전 2-4 권장 → 3 hard)**: 4개+ trigger 시 우선순위 낮은 1개 폐기 + warning 로그.
   - 슬롯 N개 중 정보형 0 + 감성형 N개: warning + slot_selection 재호출 1회
   - 같은 카드 타입 3개+ 연속: warning + 운영자 검수 권장 표시
+  - **같은 `visual_style` 2개+ 연속 (v1.8 신규)**: ai_visual 슬롯 2개가 동일 visual_style 일 때 허용 여부 Phase 4.2 Do 결정
   - kakao_dialogue 2개+: 1개만 남기고 폐기
-- **현재 상태**: LLM이 슬롯 결정 시 mix 룰 markdown으로 안내됨. 코드 가드 미구현. 운영 데이터로 violation 빈도 측정 후 결정.
+- **현재 상태**: LLM 이 슬롯 결정 시 mix 룰 markdown 으로 안내됨. 코드 가드 미구현. **Phase 4.2 진입 트리거 — `skills/meta/slot_selection.md` mix 룰 갱신 + orchestrator 슬롯 3 cap 가드 추가 (plan §14.5)**.
 
 ---
 
