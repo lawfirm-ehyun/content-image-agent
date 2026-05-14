@@ -1,0 +1,38 @@
+name: image-agent-cron
+
+# schedule 은 §10 미결정 항목 — 결정 후 활성화 (plan §3 / §10 / §12.8.3 참조).
+# 현재는 GitHub Actions UI "Run workflow" 버튼으로 수동 trigger 만 가능.
+on:
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Install Python deps
+        run: uv sync
+
+      - name: Install Playwright Chromium
+        run: uv run playwright install --with-deps chromium
+
+      - name: Download Pretendard fonts
+        run: bash scripts/download_fonts.sh
+
+      - name: Run image agent
+        run: uv run python orchestrator.py
+        env:
+          # 필수 (누락 시 cron fail) — repo grep 결과 (orchestrator.py, tools/notion, tools/image, claude-agent-sdk)
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_BLOG: ${{ secrets.NOTION_DB_BLOG }}
+          NOTION_DB_WEB: ${{ secrets.NOTION_DB_WEB }}
+          NOTION_DB_LOG: ${{ secrets.NOTION_DB_LOG }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          # 선택 (default = gpt-image-2-2026-04-21, override only) — tools/image/gpt_image_2.py
+          OPENAI_IMAGE_MODEL_INSTANT: ${{ secrets.OPENAI_IMAGE_MODEL_INSTANT }}
+          OPENAI_IMAGE_MODEL_THINKING: ${{ secrets.OPENAI_IMAGE_MODEL_THINKING }}
