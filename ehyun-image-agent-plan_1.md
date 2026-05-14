@@ -260,9 +260,9 @@ Week 4 distinct 3/3 + 회귀 0/4 PASS 후에도 parametric vocab 확장을 **즉
 
 > N=10은 cold-start 기준. 실제 threshold는 누적 후 패턴 보고 재조정. *80% plan 정신* — 정확한 cutoff는 데이터 보고.
 
-**누적 메커니즘 (별 인프라 X):**
-- 이미 `token-ledger.ndjson` 1줄/슬롯 기록 중 (chart 비용 metadata)
-- Week 5-6 진입 트리거 검토 시점에 ledger를 grep — `ChartSpec` 결정값(sub_type/orientation/emphasis_index)이 같이 emit되어 있으면 즉시 집계, 아니면 그 시점에 `orchestrator._render_slot`의 chart 분기에서 ledger emit 1줄 확장 (그래도 새 시스템 X — 기존 ledger 확장).
+**누적 메커니즘 (별 인프라 X) — 2026-05-14 drift 정정:**
+- 신설 시점 plan은 `.bkit/runtime/token-ledger.ndjson`을 per-slot 기록처로 잘못 지목. 실제는 **Notion 로그 DB**(`NOTION_DB_LOG`)의 `입력(JSON)` rich_text가 `extracted_data` 전체(즉 `orientation`/`emphasis_index` 포함)를 직렬화해 보관(`tools/notion/log_metadata.py`). `.bkit/runtime/token-ledger.ndjson`은 bkit/CC 하네스의 turn 단위 토큰 텔레메트리로 슬롯 데이터와 무관.
+- 따라서 트리거 평가 시 별도 emit 추가 **불필요** — Notion 로그 DB query만으로 sub_type / orientation / emphasis_index 집계 가능.
 - **현재(2026-05-13) 코드 변경 0**: 진입 트리거 검토 시점에 결정.
 
 **진입 후 (= 미래 Week 5-6) 작업 윤곽 (확정 X, 메모만):**
@@ -274,6 +274,29 @@ Week 4 distinct 3/3 + 회귀 0/4 PASS 후에도 parametric vocab 확장을 **즉
 - production 본문에서 chart 슬롯이 시각 단조로움으로 사용자 피드백 발생 (Week 4 distinct가 lab에서 PASS여도 production에서 약하면 거기서 끊고 진입)
 - LLM이 본문 강조를 못 잡거나 잘못 잡아 chart 폐기율 상승 (orientation/emphasis_index 결정 품질 문제)
 - 위 신호 발견 시 N 조건 충족 전이라도 Week 5-6 진입 검토
+
+### 12.8.1 1차 평가 (2026-05-14)
+
+a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique page).
+
+| 항목 | 값 | 트리거 임계 | 판정 |
+|---|---|---|---|
+| 처리된 unique 페이지 | 9 | — | — |
+| chart 슬롯 로그 row | 9 | — | — |
+| **chart 슬롯이 박힌 unique 페이지** | **1** | N ≥ 10 | **MISS (gap 9)** |
+| chart sub_type 분포 | `line` 9/9 | — | bar/donut/pie production 사용례 0 |
+| `emphasis_index != None` 사용률 | 0/9 = **0%** | ≥ 30% | **MISS (단, 9 row 모두 Week 3b 박기 전 input — 의미 0)** |
+| `orientation` 분포 | 9/9 null (= vertical default) | — | Week 3b 박기 전 input |
+| 본문 신호(다중 강조 / slice 분리 / area fill 요구) | 0건 | — | 없음 |
+| 긴급 신호(시각 단조 피드백 / 폐기율 급증) | 0건 | — | 없음 |
+
+**판정**: §12.2 "이후" **pause 계속**. N=1 chart page, 트리거 1·2 모두 MISS, 긴급 신호 0.
+
+**다음 평가 시점**: chart 슬롯이 박힌 unique production 페이지 **누적 N ≥ 10** 도달 시 (현재 1 → 9개 추가 누적 필요). 누적 속도가 느린 분야이므로 시간 기반 cron 평가 X, 이벤트 기반(N 도달 시) 1회.
+
+**메모 (§12.8 본문엔 미박음, 관찰만)**:
+- 9 chart row가 1 page에서 발생 → 동일 페이지가 schema 진화 동안 여러 차례 재처리됨(테스트 베드). 정상 production에선 page당 chart 1-3 row 예상.
+- chart 외 production 슬롯 분포: `simple_table 52 / key_points_card 3 / timeline 1 / illustration 1 / comparison_table 1`. simple_table 압도. chart 사용률 낮은 콘텐츠 특성 = §12.8 누적 속도 느릴 가능성 시사. Week 5-6 진입 결정 보수적으로 가능.
 
 ## 13. SEO + a11y 메타데이터 (alt_text + filename_slug) — v1.7.2-plan
 
