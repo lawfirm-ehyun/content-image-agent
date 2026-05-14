@@ -85,7 +85,7 @@ Python 3.12 / uv / Playwright(Chromium-headless-shell) / Chart.js CDN / Pretenda
 - §19.3 rate limit backoff — `tools/notion/_retry.py`의 `notion_call` (tenacity 5회 지수 백오프, 429/5xx)
 - §19.7 §23 키워드 코드 상수화 — `tools/compliance/keywords.py` (4 카테고리 regex master)
 - 비용 단일 source — `tools/limits.py` (18개 Final 상수) + `tools/budget.py` (`RunBudget`)
-- §15.2 cron 진입점 — `orchestrator.main()` + `process_database()`
+- §3 cron 진입점 — `orchestrator.main()` argparse 분기 (인자 없음 sweep / `--mode list` / `--page-id+--source`) + `.github/workflows/cron.yml` 2-step matrix fan-out (v1.7.5-plan)
 
 **Phase 3 진입 전 — v1.6 정의, 코드 작업 예정**:
 - §19.11 AI 카드 OCR 사실 검증 — 카드 종류별 분기 (kakao_dialogue Levenshtein / illustration 면제)

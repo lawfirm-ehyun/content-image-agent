@@ -54,9 +54,15 @@ plan 안에서 자주 참조하는 핵심 4개:
 ```
 
 진입점:
-- 수동: `uv run python orchestrator.py` (`orchestrator.main()` → `process_database()` 블로그 + 웹 순차)
-- 단건: `uv run python scripts/test_phase1.py <page_id> --source <블로그|웹>`
-- cron: `orchestrator.main()`이 cron/workflow_dispatch 호출 전제로 작성됨. **`.github/workflows/cron.yml` 작성 완료 (2026-05-14)** — `workflow_dispatch` 만 가동, `schedule` 미가동 (§10 미결정 결정 후 활성화). 의존 step: checkout / setup-uv / `uv sync` / `playwright install --with-deps chromium` / `bash scripts/download_fonts.sh` / `uv run python orchestrator.py`. env: `NOTION_TOKEN`, `NOTION_DB_BLOG`, `NOTION_DB_WEB`, `NOTION_DB_LOG`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` (필수) + `OPENAI_IMAGE_MODEL_INSTANT/THINKING` (선택). 사용자 별 작업: GitHub repo Settings → Secrets and variables → Actions 에 secret 박기.
+- 수동 sweep: `uv run python orchestrator.py` (`orchestrator.main()` → 인자 없음 = `process_database()` 블로그 + 웹 순차).
+- list 모드: `uv run python orchestrator.py --mode list` — "이미지 필요" 페이지(블로그 + 웹, 멱등성 filter 적용)를 `[{"page_id": "...", "source": "블로그"|"웹"}, ...]` JSON 으로 stdout 출력. cron fetch job 이 캡처해 matrix include 로 fan-out.
+- 단일 페이지: `uv run python orchestrator.py --page-id <id> --source <블로그|웹>` — matrix process job 이 cell 마다 1회 호출. 자체 RunBudget(`PER_RUN_CAP_USD`) + 멱등성 + page-level try/except + per-page cap 모두 유지.
+- 단건 수동 (legacy): `uv run python scripts/test_phase1.py <page_id> --source <블로그|웹>`.
+- cron: **`.github/workflows/cron.yml` 2-step matrix fan-out (2026-05-14 갱신)** — `workflow_dispatch` 만 가동, `schedule` 미가동 (§10 미결정 결정 후 활성화).
+  - **Job A `fetch`** (timeout 5분): checkout / setup-uv / `uv sync` 후 `uv run python orchestrator.py --mode list` 실행 → `outputs.pages` 로 JSON expose. env: `NOTION_TOKEN`, `NOTION_DB_BLOG`, `NOTION_DB_WEB`, `NOTION_DB_LOG`.
+  - **Job B `process`** (timeout 15분): `needs: fetch` + `if: needs.fetch.outputs.pages != '[]'`. `strategy.matrix.include: ${{ fromJSON(needs.fetch.outputs.pages) }}` + `fail-fast: false` + `max-parallel: 5` (Notion/OpenAI rate-limit 보호). cell 마다 checkout / setup-uv / `uv sync` / `playwright install --with-deps chromium` / `bash scripts/download_fonts.sh` / `uv run python orchestrator.py --page-id "${{ matrix.page_id }}" --source "${{ matrix.source }}"`. env: 기존 cron.yml 과 동일 (`NOTION_TOKEN`, `NOTION_DB_BLOG`, `NOTION_DB_WEB`, `NOTION_DB_LOG`, `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` 필수 + `OPENAI_IMAGE_MODEL_INSTANT/THINKING` 선택).
+  - **`PER_RUN_CAP_USD` 의미 변화**: 기존 단일 job 에서는 블로그 + 웹 sweep 누적 cap 이었으나, matrix 에서는 **cell 1개당 cap** 으로 작동 (각 cell 이 별 process). 총 spend = pages × `PER_PAGE_CAP_USD` (worst case). max-parallel 5 + `_DEFAULT_BATCH_LIMIT = 5` per-DB 로 한 run 당 페이지 10개 cap 자연 제한.
+  - 사용자 별 작업: GitHub repo Settings → Secrets and variables → Actions 에 secret 박기 (변경 없음).
 
 ## 4. 카드 카탈로그 (활성 7종)
 
@@ -148,7 +154,7 @@ plan 안에서 자주 참조하는 핵심 4개:
 
 | 항목 | 결정 시점 |
 |---|---|
-| cron schedule 활성화 (workflow_dispatch → schedule) | `cron.yml` 작성 완료 (2026-05-14, `workflow_dispatch` only — §3 참조). `schedule` 라인 추가는 운영자 검수 부담 결정과 함께 별 트랙. |
+| cron schedule 활성화 (workflow_dispatch → schedule) | `cron.yml` 2-step matrix fan-out 작성 완료 (2026-05-14, `workflow_dispatch` only — §3 참조). `schedule` 라인 추가는 운영자 검수 부담 결정과 함께 별 트랙. |
 | chatgpt-image-latest 비교 | OpenAI organization verification 완료 후 (15분 propagate) |
 | gpt-image-1.5 콘텐츠별 라우팅 | 5/12 비교에서 라인 일러스트 톤 최고였음. 운영 데이터로 결정. |
 | kakao_dialogue OCR Levenshtein 검증 | kakao 실제 trigger 시 추가 (현재 0건). §12.6 subagent 활성화도 이 시점에 연동. |
@@ -331,7 +337,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 §12.8.1/12.8.2 다음 평가 시점("자연 chart 페이지 N ≥ 5" / "production 페이지 30+ 추가 누적")은 **production page 자연 누적**에 의존. 이 누적은 cron schedule 가동을 전제로 함.
 
 **현재 상태 (2026-05-14)**:
-- `.github/workflows/cron.yml` **작성 완료** (§3 참조) — `workflow_dispatch` 만 가동, `schedule` 미가동.
+- `.github/workflows/cron.yml` **2-step matrix fan-out 작성 완료** (§3 참조) — `workflow_dispatch` 만 가동, `schedule` 미가동. 페이지 단위 fan-out 으로 wall-clock = max(page time), 페이지 수 N 무관 (직전 단일 job 구조에서는 N=3 시 20분 timeout 초과로 cancel 발생).
 - 따라서 production page 누적은 **수동 trigger 빈도에 종속** (GitHub Actions UI "Run workflow" 또는 로컬 `uv run python orchestrator.py` / `scripts/test_phase1.py`).
 - `schedule` 활성화 = **§12.8 평가의 prerequisite** (자연 누적 측정 위해).
 
@@ -404,6 +410,8 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 ---
 
 ## Changelog
+
+- **v1.7.5-plan** (2026-05-14): `.github/workflows/cron.yml` **2-step matrix fan-out** 갱신. 배경: 직전 cron run 실측 — 블로그 1건(7:15) + 웹 1건(7:28) 완료, 웹 2번째 페이지 처리 중 `timeout-minutes: 20` 도달해 cancel. 페이지당 7-8분 × 페이지 N → 단일 job 구조는 N ≥ 3 부터 timeout 노출. **해결**: page 단위 fan-out — fetch job (5분) 이 "이미지 필요" 페이지 목록 JSON 출력 → process job matrix (cell 별 15분, fail-fast: false, max-parallel: 5) 가 페이지 1개씩 병렬 처리. 총 wall-clock = max(페이지 처리 시간), 페이지 수 N 무관. **갱신 위치**: §3 진입점 (list 모드 / page-id 모드 / cron 2-step 설명 추가) + §10 cron schedule row (fan-out 작성 완료 명시) + §12.8.3 (matrix 구조 명시). **코드 변경**: `orchestrator.py` argparse 분기 (`--mode list` / `--page-id+--source` / 인자 없음 sweep) 추가, `process_database` / `run_for_page` 본체 보존. **PER_RUN_CAP_USD 의미 변화**: 기존 sweep 누적 cap → matrix cell 당 cap (cell 이 별 process). 총 spend = pages × PER_PAGE_CAP_USD worst case, max-parallel 5 + per-DB limit 5 로 자연 제한.
 
 - **v1.7.4-plan** (2026-05-13): §12.2 Week 4 종결 + §12.2 "이후" path 진입 (pause). **plan only — 코드는 4fd5aa8/1ece541에서 이미 ship.** 배경: Week 4 distinct 3/3 + 회귀 0/4 모두 PASS (lab 검증 OK)이나 (a) sub_type별 production 데이터셋에서 emphasis 의미 있는지는 별 검증, (b) LLM이 본문에서 orientation/emphasis_index를 실제로 자주·적절히 결정하는지는 spike로 알 수 없음. parametric vocab 즉시 확장 X, production 사용 패턴 누적 대기. **갱신 위치**: §12.5 표에 실제 결과 row 추가 + §12.7 미결정 항목 (emphasis 다중화 / donut·pie axis 후보 / orientation 3번째) status 갱신 + 새 §12.8 — Week 5-6 진입 트리거 (N≥10 + emphasis 사용률 ≥30% OR 본문 패턴 신호) + 누적 메커니즘 (기존 token-ledger 확장, 새 시스템 X) + 긴급 진입 신호 명시. *80% plan 정신 (v1.7.3 freeze) 연속*. 다음 plan 변경은 production page 누적 후.
 

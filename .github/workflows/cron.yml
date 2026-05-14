@@ -1,14 +1,53 @@
 name: image-agent-cron
 
-# schedule 은 §10 미결정 항목 — 결정 후 활성화 (plan §3 / §10 / §12.8.3 참조).
-# 현재는 GitHub Actions UI "Run workflow" 버튼으로 수동 trigger 만 가능.
+# 2-step matrix fan-out (plan §3 / §12.8.3 / Changelog v1.7.5-plan).
+# schedule 은 §10 미결정 항목 — 결정 후 활성화. 현재는 workflow_dispatch 만.
 on:
   workflow_dispatch:
 
 jobs:
-  run:
+  # Job A — "이미지 필요" 페이지 목록을 JSON 으로 산출 (멱등성 필터 적용).
+  # outputs.pages 가 빈 배열이면 process job 은 skip 됨.
+  fetch:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
+    outputs:
+      pages: ${{ steps.list.outputs.pages }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v3
+
+      - name: Install Python deps
+        run: uv sync
+
+      - name: List pending pages (JSON)
+        id: list
+        env:
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
+          NOTION_DB_BLOG: ${{ secrets.NOTION_DB_BLOG }}
+          NOTION_DB_WEB: ${{ secrets.NOTION_DB_WEB }}
+          NOTION_DB_LOG: ${{ secrets.NOTION_DB_LOG }}
+        run: |
+          set -euo pipefail
+          PAGES="$(uv run python orchestrator.py --mode list)"
+          echo "pages<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$PAGES" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+          echo "fetched pages: $PAGES"
+
+  # Job B — 페이지 1개 = job 1개. matrix fan-out 으로 병렬 실행.
+  # cell 1개 timeout 15분 (페이지당 평균 7-8분 + 마진).
+  process:
+    needs: fetch
+    if: needs.fetch.outputs.pages != '[]' && needs.fetch.outputs.pages != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false   # 한 페이지 실패해도 다른 페이지 cell 계속 진행 (§19.9 정신).
+      max-parallel: 5    # Notion/OpenAI rate limit 보호 — backoff 있지만 안전 마진.
+      matrix:
+        include: ${{ fromJSON(needs.fetch.outputs.pages) }}
     steps:
       - uses: actions/checkout@v4
 
@@ -23,10 +62,10 @@ jobs:
       - name: Download Pretendard fonts
         run: bash scripts/download_fonts.sh
 
-      - name: Run image agent
-        run: uv run python orchestrator.py
+      - name: Process page (matrix cell)
+        run: uv run python orchestrator.py --page-id "${{ matrix.page_id }}" --source "${{ matrix.source }}"
         env:
-          # 필수 (누락 시 cron fail) — repo grep 결과 (orchestrator.py, tools/notion, tools/image, claude-agent-sdk)
+          # 필수 (누락 시 fail) — orchestrator.py, tools/notion, tools/image
           NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
           NOTION_DB_BLOG: ${{ secrets.NOTION_DB_BLOG }}
           NOTION_DB_WEB: ${{ secrets.NOTION_DB_WEB }}
