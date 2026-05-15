@@ -557,12 +557,13 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 
 #### 4.2 Done
 - [ ] `skills/visual_styles/` 5개 + `reference_library/visual_styles/` 5개 폴더
-- [ ] `ai_visual` 카드 e2e 5종 스타일 각 1회 trigger 성공
+- [ ] `ai_visual` 카드 e2e — **trigger 시도 4회 완화 해석** (웹 DB '이미지 필요' 보유분 4건 한정, 2026-05-15 사용자 컨펌). 5종 distinct 미달 시 누락 1-2종은 4.3 이후 운영 중 자연 trigger cover.
 - [ ] `illustration` skill `[deprecated]` 표시 (즉시 삭제 X)
 - [ ] 슬롯 3 cap 적용
-- [ ] `quality=high` 실비 측정 → PER_SLOT_COST_CAP_USD 안전 확인
+- [ ] `quality=high` 실비 측정 → PER_SLOT_COST_CAP_USD 안전 확인 (cinematic_three_frame LLM 매칭 종속, 미발생 시 4.3 운영 cover)
 - [ ] 사용자 스타일 추가 dry-run 1회 검증
 - [ ] sweep 폐기 (`orchestrator.main()` argparse 분기 단순화 — list / page-id 만)
+- [ ] **Gap A — `skills/image_types/ai_visual.md` 신설** (review_input loader 정합, 2026-05-15 발견)
 
 #### 4.3 진입 prerequisite
 - [ ] 4.2 Done 모두 통과
@@ -615,6 +616,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 | analyze 매칭 | 4.2 | `tools/llm/analyze_content.py` | 감성형 슬롯 trigger 시 `skills/visual_styles/*.md` 디렉터리 scan + LLM 매칭 prompt |
 | orchestrator | 4.2 | `orchestrator.py` | `SUPPORTED_TYPES` + `AI_CARD_TYPES` + `_render_slot` 분기, **sweep 모드 폐기** (argparse 분기 단순화) |
 | skill | 4.2 | `skills/image_types/illustration.md` | deprecate 표시 |
+| skill | 4.2 | `skills/image_types/ai_visual.md` | **신설** — review_input loader 정합 (Gap A, 2026-05-15 발견). `tools/llm/review.py` 가 `load_skill(f"image_types/{slot_type}.md")` 호출 시 파일 부재면 슬롯 폐기 → ai_visual 모든 슬롯 review 단계 dispose. visual_styles_library 참조 + scene/mood/visual_style/accent_target 검증 룰 |
 | 신규 디렉터리 | 4.2 | `skills/visual_styles/` + `reference_library/visual_styles/` | 5종 스타일 md + reference 폴더 |
 | slot_selection | 4.2 | `skills/meta/slot_selection.md` | mix 룰 갱신 (슬롯 3 cap, ai_visual 통합) |
 | vision review | 4.3 | `tools/render/vision_review.py` (신규) | Sonnet 4.6 vision 호출 + JSON 반환 |
