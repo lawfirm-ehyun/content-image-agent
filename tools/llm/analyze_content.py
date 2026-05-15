@@ -1,6 +1,8 @@
 """본문 블록 → image_slots 결정 (slot_selection.md 스킬).
 
-Phase 1 활성: simple_table + chart(line)만. 다른 패턴은 슬롯 결정 X.
+Phase 4.2 (2026-05-15): 감성형 카드 `ai_visual` 신설 — skills/visual_styles/*.md
+디렉터리 scan → 슬림 표 (name/tone/use_when) 를 analyze prompt 에 inject. LLM 이
+본문 보고 best fit `visual_style` 매칭. 매칭 실패 시 슬롯 폐기 (silent fallback 금지).
 """
 from __future__ import annotations
 
@@ -10,8 +12,44 @@ from typing import Any
 
 from tools.limits import ANALYZE_BUDGET_USD, MAX_BLOCKS_PROMPT_CHARS
 from tools.llm._common import compact_blocks, load_skill, query_json
+from tools.visual_styles import list_visual_styles
 
 logger = logging.getLogger(__name__)
+
+
+def _format_visual_styles_table() -> str:
+    """Phase 4.2 — analyze prompt에 inject할 visual_styles 슬림 표 (name/tone/use_when만).
+
+    prompt_template 본문은 runtime ai_render에서만 사용 (LLM에 노출 X). LLM은 매칭
+    결과로 visual_style=<name> 만 결정 — scene/mood/accent_target 도 본문 사실 안에서 합성.
+
+    skills/visual_styles/ 디렉터리가 비어있거나 모두 파싱 실패면 빈 문자열 반환 — 호출자가
+    inject skip. (analyze prompt 안정성 보장 — visual_styles 없어도 정보형 카드 작동.)
+    """
+    styles = list_visual_styles()
+    if not styles:
+        return ""
+    lines = [
+        "## Visual Styles (ai_visual 카드 visual_style 선택지)",
+        "",
+        "본문이 감성형 카드(`ai_visual`)에 부합하면 아래 표에서 best fit `visual_style` 결정. "
+        "use_when 패턴과 본문 톤이 명확히 매칭되지 않으면 슬롯 폐기 (임의 default 금지).",
+        "",
+        "| name | tone | use_when |",
+        "|---|---|---|",
+    ]
+    for s in styles:
+        name = s.name.replace("|", "\\|")
+        tone = s.tone.replace("|", "\\|").replace("\n", " ")
+        use_when = s.use_when.replace("|", "\\|").replace("\n", " ")
+        lines.append(f"| {name} | {tone} | {use_when} |")
+    lines.append("")
+    lines.append(
+        "ai_visual 슬롯 trigger 시 `extracted_data` 에 다음 필수: "
+        "`visual_style`=<위 표 name 중 1>, `scene`=<자연어 장면 묘사, 본문 사실 안에서 합성>, "
+        "`mood`=<분위기 키워드>. 옵션: `accent_target`=<wine-magenta 강조 요소 자연어>."
+    )
+    return "\n".join(lines)
 
 
 def _compress_for_analyze(compacted: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -70,11 +108,14 @@ async def analyze_content(blocks: list[dict[str, Any]]) -> tuple[list[dict[str, 
         '응답 스키마: {"image_slots": [...]}'
     )
 
+    visual_styles_table = _format_visual_styles_table()
+
     system = (
         "너는 이현 블로그 이미지 슬롯 결정 어시스턴트다. "
         "본문에 명시된 데이터만 추출하고 추측·의역은 절대 금지.\n\n"
         "## Slot Selection 스킬\n" + skill +
-        "\n\n## 비주얼 가이드\n" + visual
+        "\n\n## 비주얼 가이드\n" + visual +
+        (("\n\n" + visual_styles_table) if visual_styles_table else "")
     )
 
     # 페이지당 1회 호출. v1.3에서 slot_selection 스킬이 두꺼워져 cache_creation 47K + output 13K
