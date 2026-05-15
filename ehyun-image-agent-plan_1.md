@@ -556,17 +556,17 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 - [x] `docs/visual_styles_library_v1.md` 5종 스타일 frontmatter draft 사용자 OK (2026-05-15)
 
 #### 4.2 Done
-- [ ] `skills/visual_styles/` 5개 + `reference_library/visual_styles/` 5개 폴더
-- [ ] `ai_visual` 카드 e2e — **trigger 시도 4회 완화 해석** (웹 DB '이미지 필요' 보유분 4건 한정, 2026-05-15 사용자 컨펌). 5종 distinct 미달 시 누락 1-2종은 4.3 이후 운영 중 자연 trigger cover.
-- [ ] `illustration` skill `[deprecated]` 표시 (즉시 삭제 X)
-- [ ] 슬롯 3 cap 적용
-- [ ] `quality=high` 실비 측정 → PER_SLOT_COST_CAP_USD 안전 확인 (cinematic_three_frame LLM 매칭 종속, 미발생 시 4.3 운영 cover)
-- [ ] 사용자 스타일 추가 dry-run 1회 검증
-- [ ] sweep 폐기 (`orchestrator.main()` argparse 분기 단순화 — list / page-id 만)
-- [ ] **Gap A — `skills/image_types/ai_visual.md` 신설** (review_input loader 정합, 2026-05-15 발견)
+- [x] `skills/visual_styles/` 5개 + `reference_library/visual_styles/` 5개 폴더 (6dc69f7)
+- [x] `ai_visual` 카드 e2e — trigger 시도 4건 (3 dispose @ review_input + 1 완주 ai_render→Notion, $0.063 medium), 5종 distinct 미달은 4.3 운영 자연 cover (사용자 컨펌 2026-05-15)
+- [x] `illustration` skill `[deprecated]` 표시 (5a8c59a, 즉시 삭제 X)
+- [x] 슬롯 3 cap 적용 (efafa1a spec + 관찰 — e2e 5페이지 모두 3 슬롯 결정)
+- [~] `quality=high` 실비 측정 → cinematic_three_frame LLM 매칭 0건 발생 → **4.3 운영 cover 의존**
+- [x] 사용자 스타일 추가 dry-run — 2026-05-15 sentinel 6번째 스타일 추가 → `list_visual_styles()` + analyze 표 자동 인식 확인, 즉시 삭제. 코드 변경 0.
+- [x] sweep 폐기 (5ce3ca1, list / page-id 만)
+- [x] **Gap A — `skills/image_types/ai_visual.md` 신설** (12df132, review_input loader 정합 — Page 4 재실행 시 ai_visual 1건 완주 검증)
 
 #### 4.3 진입 prerequisite
-- [ ] 4.2 Done 모두 통과
+- [-] 4.2 Done — 7/8 [x], #5 (cinematic 실비) 만 [~] 4.3 운영 cover 의존. 4.3 진입은 #5와 직교 (vision spike 별도). 사용자 결정 사유 — Phase 4.3 Design 첫 작업은 vision spike, cinematic 실비는 운영 5건 누적 추적.
 - [ ] vision 모델 spike 1페이지 (Sonnet 4.6 vision) → cost/accuracy/latency 측정
 
 #### 4.3 Done
