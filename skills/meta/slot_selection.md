@@ -36,8 +36,8 @@
 본문에 다음 패턴이 줄글로 있으면 카드 후보:
 
 - **N가지 enumeration — 핵심 정리 / 체크리스트 / 주의사항** ("핵심 3가지", "주의사항 5가지", "준비 서류") → `key_points_card`
-  - extracted_data: `title`, `items: [{label, description?}]`, `footnote?` (3-5개)
-  - description은 옵션 — label만으로 충분하면 description 생략 가능.
+  - extracted_data: `title` (str), `items: [{label (str), description? (str scalar)}]`, `footnote?` (3-5개)
+  - **`description` 은 string scalar 필수** — dict 산출 시 슬롯 폐기 (Gap B, 2026-05-15). description은 옵션 — label만으로 충분하면 description 생략 가능.
 - **N가지 enumeration — 표 형식 데이터 (2-3 컬럼)** ("권리/내용", "조건/결과") → `simple_table`
 - **비교 구조 (2-3 옵션 × 항목별 차이)** ("협의 vs 재판 이혼", "일반 vs 간이 절차") → `comparison_table`
   - **§23 경계**: 다른 법무법인과 비교 X. 비교 대상은 법적 절차/유형/조건 등 추상 개념이어야 함.
@@ -45,7 +45,8 @@
   - extracted_data: `title`, `column_headers` (label컬럼 포함), `rows: [{label, values}]`, `footnote?`
 - **단순 차이 비교 (한 축만)** ("전과 후", "X와 Y") → `simple_table` (3열 비교 형식)
 - **법률 절차/소송 흐름 (4-6 단계)** ("소장 접수 → 답변서 → 변론 → 조정 → 판결") → `timeline`
-  - extracted_data: `title`, `steps: [{label, description?, duration?, icon?}]`, `footnote?`
+  - extracted_data: `title` (str), `steps: [{label (str), description? (str scalar), duration? (str scalar), icon? (str)}]`, `footnote?`
+  - **`description` / `duration` 은 string scalar 필수** — dict (`{value, unit}` 등 구조화) 산출 시 슬롯 폐기 (Gap B, 2026-05-15). 단위 포함은 단일 문자열 ("30일", "1-3개월", "약 2주").
   - `icon`은 Lucide 이름 (`file-text`, `gavel`, `scale`, `handshake`, `mail`, `clock`, `check-circle` 등)
   - 단순 enumeration (3가지)은 simple_table 우선. 순차 단계가 명확할 때만 timeline.
 - **절차/순서 (단순 3-4 항목, 시간/소요 정보 없음)** → `simple_table`

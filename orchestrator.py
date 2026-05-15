@@ -195,6 +195,13 @@ async def _render_slot(
         for i, item in enumerate(items):
             if not item.get("label"):
                 raise ChartDataError(f"items[{i}]에 label 누락 (필수)")
+            # Gap B (2026-05-15): description은 string scalar 필수. LLM이 dict 산출 시
+            # Jinja runtime error 대신 깔끔한 ChartDataError 로 dispose (3-retry 처리).
+            desc = item.get("description")
+            if desc is not None and not isinstance(desc, str):
+                raise ChartDataError(
+                    f"items[{i}].description 은 string scalar 필수 (받은 타입: {type(desc).__name__})"
+                )
         await render_template(
             "key_points_card",
             dict(
@@ -210,6 +217,17 @@ async def _render_slot(
             raise ChartDataError(
                 f"timeline은 최소 3 단계 필요 (받은 값: {len(steps)})"
             )
+        # Gap B (2026-05-15): description / duration은 string scalar 필수. LLM 이 dict
+        # ({value, unit} 등 구조화) 산출 시 Jinja runtime error 대신 깔끔한 ChartDataError
+        # 로 dispose. slot_selection.md spec 명시 + 본 가드 = 1차/2차 방어.
+        for i, step in enumerate(steps):
+            for field in ("description", "duration"):
+                val = step.get(field)
+                if val is not None and not isinstance(val, str):
+                    raise ChartDataError(
+                        f"steps[{i}].{field} 은 string scalar 필수 "
+                        f"(받은 타입: {type(val).__name__})"
+                    )
         for i, step in enumerate(steps):
             if not step.get("label"):
                 raise ChartDataError(f"steps[{i}]에 label 누락 (필수)")
