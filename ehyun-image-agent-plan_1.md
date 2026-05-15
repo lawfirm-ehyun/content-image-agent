@@ -546,14 +546,14 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 - [x] 사용자 컨펌 미해결 §1/§3/§4/§5 fix (2026-05-14)
 
 #### 4.1 Done
-- [ ] 정보형 5종 토스피드 reference 비교 사용자 OK
-- [ ] `styles/ehyun_default.yaml` + `templates/_base.css` 토큰 동기
-- [ ] 회귀 검증 0 (사실 데이터 SHA / OCR diff)
-- [ ] mobile 40px+ 유지
+- [-] 정보형 5종 토스피드 reference 비교 사용자 OK → **4.2 Done 통합 e2e (5페이지 분량) 로 close 위임** (2026-05-15 사용자 결정, Path B 단독 비교 e2e 보류)
+- [x] `styles/ehyun_default.yaml` + `templates/_base.css` 토큰 동기 (831abd0 / c6f3cec / 78d9745 / aa69eb2)
+- [x] 회귀 검증 0 (사실 데이터 SHA / OCR diff) — chart baseline SHA lock 재기록 (8ce7b74)
+- [x] mobile 40px+ 유지 — Phase 4.1 변경은 token (background/padding) 만, font-size 0 변경
 
 #### 4.2 진입 prerequisite
-- [ ] 4.1 Done 모두 통과
-- [ ] `docs/visual_styles_library_v1.md` 5종 스타일 frontmatter draft 사용자 OK
+- [-] 4.1 Done — #1 은 4.2 통합 e2e 로 위임 (위 [-] 항목), #2-4 [x] 통과
+- [ ] `docs/visual_styles_library_v1.md` 5종 스타일 frontmatter draft 사용자 OK (대기 중)
 
 #### 4.2 Done
 - [ ] `skills/visual_styles/` 5개 + `reference_library/visual_styles/` 5개 폴더
