@@ -553,7 +553,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 
 #### 4.2 진입 prerequisite
 - [-] 4.1 Done — #1 은 4.2 통합 e2e 로 위임 (위 [-] 항목), #2-4 [x] 통과
-- [ ] `docs/visual_styles_library_v1.md` 5종 스타일 frontmatter draft 사용자 OK (대기 중)
+- [x] `docs/visual_styles_library_v1.md` 5종 스타일 frontmatter draft 사용자 OK (2026-05-15)
 
 #### 4.2 Done
 - [ ] `skills/visual_styles/` 5개 + `reference_library/visual_styles/` 5개 폴더
