@@ -24,9 +24,9 @@
   },
   "captured_baseline": {
     "png_path": "chart_pie.png",
-    "png_bytes": 50128,
-    "sha256": "e9d5b720ff30e916a4c7322dc3918dcb29cb207c690f3b083806d5db3bda88db",
-    "captured_at": "2026-05-13T07:01:05+00:00",
-    "git_commit": "a12f666197ada861f48ed71b70b06101cc4e0917"
+    "png_bytes": 49692,
+    "sha256": "7eaa4710bd84274adc2cc0d7e291dfde0ee8b1230e77af18bc47809bf603fd38",
+    "captured_at": "2026-05-15T15:22:00+00:00",
+    "git_commit": "aa69eb2_phase4_1_bg_eaeaea"
   }
 }
