@@ -1,21 +1,22 @@
-# Slot Selection (v1.6.2)
+# Slot Selection (v1.8 Phase 4.2)
 
 본문 블록을 분석해서 페이지 전체에 어떤 image_type 슬롯을 어디에 넣을지 결정한다.
 0개도 OK이지만 이현 콘텐츠는 보통 2000자+이라 0개 결정은 거의 없을 것.
 
-## v1.6 사상 — 정보형 + 감성형 mix
+## v1.8 사상 — 정보형 + 감성형 mix, 슬롯 3 cap
 
-**페이지당 정보형(template) 1-2 + 감성형(AI) 1-2 mix 권장.** 정보형은 사실 시각화, 감성형은 도입부 분위기/내러티브 전달. 콘텐츠 종속 — 강제 X.
+**페이지당 슬롯 합계 3 cap (hard, v1.8 Phase 4.2 §14.5)**. 권장 mix: 정보형 1-2 + 감성형 1-2, **합 ≤ 3**. 정보형은 사실 시각화, 감성형은 도입부 분위기/내러티브 전달. 콘텐츠 종속 — 강제 X.
 
 | 카테고리 | 카드 | 생성 | 트리거 |
 |---|---|---|---|
 | **정보형** | `simple_table` / `chart`(line·bar·donut·pie) / `comparison_table` / `key_points_card` / `timeline` | template | 본문 사실 시각화 |
-| **감성형 (텍스트 0)** | `illustration` | AI (gpt-image instant) | 도입부 분위기 / 사용자 사연 환기 |
+| **감성형 (텍스트 0)** | `ai_visual` (5 visual_style: point_color_line / miniature_stock / korean_court_scene / blueprint_poster / cinematic_three_frame) | AI (gpt-image) | 도입부 분위기 / 사용자 사연 / 한국 법원 풍경 / 추상 구조 환기 |
 | **감성형 (텍스트 사실)** | `kakao_dialogue` | AI (gpt-image thinking) | 본문 대화 시나리오 텔링 |
+| **감성형 [deprecated]** | `illustration` (단일 라인 스타일, v1.8 Phase 4.2 에서 ai_visual + point_color_line 으로 흡수) | AI (gpt-image instant) | legacy path만 — 신규 trigger 는 ai_visual 권장 |
 
 ### 사실 정확성 절대 룰 #1 — 카테고리 차등
 - **정보형 + kakao_dialogue**: 본문 그대로 (숫자/values/labels/messages 1자 변경 X)
-- **illustration**: scene/mood는 본문 사실 안에서 합성 OK (라벨링·재표현). 이미지 안 텍스트 0 강제 (vision 검증).
+- **ai_visual + illustration**: scene/mood/accent_target은 본문 사실 안에서 합성 OK (라벨링·재표현). 이미지 안 텍스트 0 강제 (`text_rule=zero`, vision 검증).
 
 ---
 
@@ -100,30 +101,39 @@ extracted_data:
 
 ---
 
-## 감성형 결정 룰 (v1.6 신설)
+## 감성형 결정 룰 (v1.8 갱신)
 
-### `illustration` — 도입부 분위기 / 사용자 사연 환기
+### `ai_visual` — 5 visual_style 라이브러리 (v1.8 Phase 4.2 신설)
 
-본문에 다음 패턴이 있으면 후보:
+`skills/visual_styles/*.md` frontmatter (analyze prompt에 슬림 표로 inject) 의 `use_when` 패턴과 본문이 명확히 매칭될 때 후보. 매칭 안 되면 슬롯 폐기 (임의 default 금지).
 
-- **도입부 H2 첫 단락의 사용자 사연·상황 묘사**
-  - 예: "30대 직장인 김OO은 야간에 음주측정에 걸려..." → 그 장면 일러스트
-  - 예: "거실에 모인 형제 둘이 유산 서류를 보며 다투기 시작했습니다." → 그 장면
-- **콘텐츠 전환부** (정보 흐름이 길어지는 H2 사이)
-  - 정보형 카드가 3개 이상 연속이면 감성형 1개로 호흡 분기 권장
-- **금지 케이스**:
-  - 본문에 사연/장면 묘사 없음 → illustration trigger X (환각 방지)
-  - 텍스트 다수 필요 → 그건 정보형 카드 (template)
-  - 사실 인용 필요 → kakao_dialogue 또는 정보형 simple_table
+**visual_style 선택 룰**:
+- 본문 H2 첫 단락 + 도입부 톤 분석 → 표의 `use_when` 패턴 중 best fit 1개 결정
+- `point_color_line`: 도입부 사용자 사연 / 콘텐츠 전환부 (기존 illustration 흡수, default)
+- `miniature_stock`: 추상 개념 사물 비유 가능 (계약/합의/분쟁) / 얼굴 노출 회피
+- `korean_court_scene`: 소송·재판 절차 / 법원 출석·변호사 등장 / 법적 무게감 환기
+- `blueprint_poster`: 추상 구조·시스템·관계도 환기 (정보형 timeline/simple_table 부적합)
+- `cinematic_three_frame`: 인물 사연이 짧은 시퀀스 (시간 흐름·감정 변화) 로 풀리는 경우 — 2:3 portrait, quality=high (실비 ↑)
 
-**스타일 (v1.6.1 fix)**: 라인 일러스트 단일. 한국 웹툰형은 Phase 4 `webtoon`.
+**금지 케이스**:
+- 본문에 사연/장면/구조/대화·인물 시퀀스 묘사 없음 → ai_visual trigger X (환각 방지)
+- 텍스트 다수 필요 → 정보형 카드 (template)
+- 사실 인용 필요 → kakao_dialogue 또는 정보형 simple_table
+- 같은 페이지 ai_visual 2개+ 시 visual_style 연속 동일 → 톤 단조 (별 visual_style 또는 슬롯 분할)
 
-**extracted_data**:
-- `scene` (str): 장면 묘사 자연어. 본문에서 추출 또는 본문 사실 안에서 합성.
-- `mood` (str): 분위기 키워드. "당혹스러움" / "고민" / "안도" / "긴장" 등.
-- `accent_target` (str, 옵션): wine-magenta로 강조할 1-2 요소. 예: "셔츠 칼라", "서류 표지". 비우면 모델 자동 결정.
+**extracted_data** (analyze prompt 응답):
+- `visual_style` (str, 필수): 위 5개 name 중 1. 빈 값 / 미정의 값 → 슬롯 폐기.
+- `scene` (str, 필수): 장면 묘사 자연어. 본문 사실 안에서 합성.
+- `mood` (str, 필수): 분위기 키워드. "당혹스러움" / "긴장" / "고민" / "체계적" 등.
+- `accent_target` (str, 옵션): wine-magenta 강조 자연어. 비우면 frontmatter `accent_target_default` 또는 "a key element" fallback.
 - `alt_text` (str): 노션 이미지 alt. 한국어 1-2줄. 본문에서 합성.
 - `footnote` (str, 옵션)
+
+### `illustration` [deprecated v1.8 Phase 4.2] — legacy path만
+
+> ai_visual + visual_style=point_color_line 으로 흡수. 신규 trigger 는 ai_visual 권장. backwards compat 유지 (legacy path 진입은 LLM이 본 항목 보고 결정한 경우만).
+
+본문에 도입부 사용자 사연 패턴이 있어도 ai_visual 우선. ai_visual 매칭 실패 시 fallback illustration trigger 도 금지 — 환각 방지 (slot 폐기).
 
 ### `kakao_dialogue` — 의뢰인-변호사 카톡 대화
 
@@ -148,18 +158,24 @@ extracted_data:
 
 ---
 
-## Page-level mix 권장 룰 (v1.6 신설)
+## Page-level mix 권장 룰 (v1.8 갱신 — 슬롯 3 cap hard)
 
-- **페이지당 슬롯 2-4개** 권장 (이전 1-3 → v1.6 상향, 감성형 포함 mix 반영).
-- **권장 mix**: 정보형 1-2 + 감성형 1-2.
+- **페이지당 슬롯 합계 3 cap (hard, v1.8 Phase 4.2 §14.5)**. 이전 2-4 권장 → 3 hard cap. ai_visual `quality=high` 변동성 + vision review 슬롯당 cost 마진 반영.
+- **권장 mix**: 정보형 1-2 + 감성형 1-2, **합 ≤ 3**.
+- **4개+ trigger 시**: 우선순위 낮은 1개 폐기. 우선순위 룰:
+  - (a) 정보형 0 시 정보형 1개 보장 (감성형 1-2 + 정보형 1 = 3 우선)
+  - (b) 정보형 ≥ 2 + 감성형 0 → ai_visual 1개 추가 trigger 후보 (감성 mix 권장)
+  - (c) kakao_dialogue 우선, ai_visual 차순, 정보형 동등 — 4번째 슬롯은 데이터 신호 약한 카드부터 폐기
 - **콘텐츠 종속 — 강제 X**:
-  - 도입 사연이 약한 페이지 → illustration 생략 OK (정보형만 2-3개)
-  - 데이터 풍부 페이지 → 정보형 3-4개도 허용
+  - 도입 사연이 약한 페이지 → 감성형 생략 OK (정보형만 2-3개)
+  - 데이터 풍부 페이지 → 정보형 3개도 허용 (단 3 cap 안에서)
   - 짧은 본문 (1500자 미만) → 슬롯 1-2개로 압축
 - **금지 조합**:
   - 감성형만 (정보형 0): 정보 콘텐츠로서 가치 결여
-  - 같은 카드 타입 3개+ 연속 (예: simple_table 3개): 시각 단조로움
+  - 정보형만 (감성형 0) 강제: 콘텐츠가 정보 위주면 OK, 강제 추가 X
+  - 같은 카드 타입 3개 연속 (예: simple_table 3개): 시각 단조로움
   - kakao_dialogue 2개+ in 한 페이지: 톤 과잉
+  - ai_visual 2개 + 동일 visual_style: 톤 단조 (별 visual_style 또는 슬롯 분할)
 
 ---
 
@@ -170,6 +186,8 @@ extracted_data:
 - **(`chart`) 데이터 포인트 1개** — v1.6.1 `stat_highlight` 폐기로 폴백 없음. 슬롯 결정 X (본문 텍스트로 강조 유지).
 - **단일 숫자 강조** ("10명 중 7명", "638억") — v1.6.1 `stat_highlight` 폐기. 슬롯 결정 X.
 - 본문에 대화/사연 없는데 만들어내는 감성형 카드 (환각)
+- **ai_visual visual_style 매칭 실패** — 5 visual_style use_when 패턴 중 명확히 매칭되는 것 없으면 슬롯 폐기 (임의 default 금지, plan §14.2 §1.4)
+- **4번째+ 슬롯** — 3 cap 초과분은 우선순위 룰로 폐기 (위 Page-level mix)
 
 > v1.6.2: AI prompt는 자연어 묘사로 작성 (픽셀/hex/CSS 토큰 over-constraint X). 텍스트 사실 필드만 `exact_korean_strings`로 엄격 분리.
 
@@ -178,13 +196,13 @@ extracted_data:
 ## 위치 결정
 
 - **정보형 카드**: 해당 데이터가 등장하는 H2 섹션의 **첫 단락 직후**. 첫 단락이 50자 미만이면 다음 단락 후.
-- **illustration**: 페이지 도입부 H2 섹션 첫 단락 직후 (도입 사연 직후) — 또는 콘텐츠 전환부 H2 헤딩 직후.
+- **ai_visual**: 페이지 도입부 H2 섹션 첫 단락 직후 (도입 사연·구조·법원 풍경 등 환기) — 또는 콘텐츠 전환부 H2 헤딩 직후. `visual_style=cinematic_three_frame` 은 2:3 portrait 라 도입부 헤더 직후 임팩트 포지션 권장.
+- **illustration** [deprecated]: ai_visual + point_color_line 으로 라우팅 권장. legacy path 진입 시 위치는 ai_visual 과 동일.
 - **kakao_dialogue**: 본문 대화 인용 직후.
 
 ## 슬롯 개수
 
-- 페이지당 2-4개 권장 (v1.6 상향).
-- 5개 초과는 본문이 매우 길거나(4000자+) 데이터·사연 풍부할 때만.
+- **페이지당 3 cap hard (v1.8 Phase 4.2 §14.5)**. 4개+ 결정 X — 우선순위 룰 (위 Page-level mix) 적용해 1개 폐기.
 - 슬롯 0개도 OK (콘텐츠 짧거나 시각화할 줄글 구조가 없을 때). 단 추적 위해 로그 DB에 1행 기록 필수 (plan §19.6 — `타입=없음` select 옵션 사용).
 
 ---
@@ -214,10 +232,11 @@ extracted_data:
 
 ```yaml
 image_slots:
-  # illustration (감성형, 도입부)
-  - type: illustration
+  # ai_visual (감성형, 도입부 — v1.8 Phase 4.2 신설)
+  - type: ai_visual
     position_after_block_id: <block_uuid>
     extracted_data:
+      visual_style: "point_color_line"
       scene: "야간 공원에서 음주측정 받는 30대 직장인"
       mood: "당혹스러움"
       accent_target: "직장인의 셔츠 칼라"
@@ -263,11 +282,12 @@ image_slots:
 
 ---
 
-## 사실 정확성 (절대 룰 #1) — v1.6 카테고리 차등
+## 사실 정확성 (절대 룰 #1) — v1.8 카테고리 차등
 
 - **사실 그 자체 (정보형 + kakao_dialogue 텍스트 필드)**: 1자도 변경 X. 본문에 명시된 값/대화 그대로. 가짜 출처 X.
   - 정보형: 숫자 / values / labels / point_labels / source
   - kakao_dialogue: messages[i].text, sender_label
   - kakao_dialogue OCR 검증: `tools/llm/image_review.py` vision으로 messages OCR 추출 → Levenshtein distance ≤ 2 검증. 초과 시 retry 1회 → 슬롯 폐기.
-- **라벨링·재표현 (정보형 title/headers/cells, illustration scene/mood)**: 본문 사실 안에서 직관 합성 OK. 본문에 없는 사실/주체 삽입 X. title은 본문 H2/H3와 완전 동일만 X.
-- **illustration 이미지 안 텍스트**: 0 강제. vision으로 텍스트 픽셀 감지 시 retry 1회 → 슬롯 폐기 (§19.16).
+- **라벨링·재표현 (정보형 title/headers/cells, ai_visual + illustration scene/mood/accent_target)**: 본문 사실 안에서 직관 합성 OK. 본문에 없는 사실/주체 삽입 X. title은 본문 H2/H3와 완전 동일만 X.
+- **ai_visual visual_style 매칭**: 본문 톤 + use_when 패턴 명확 매칭만. 매칭 불확실 시 슬롯 폐기 (임의 default 금지).
+- **ai_visual + illustration 이미지 안 텍스트**: 0 강제 (`text_rule=zero`). Phase 4.3 vision 인프라 (§19.16, `tools/render/vision_review.py`) 완성 후 픽셀 ≥ 1% 또는 OCR token ≥ 3개 → retry 1회 → 슬롯 폐기.
