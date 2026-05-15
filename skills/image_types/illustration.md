@@ -1,4 +1,8 @@
-# illustration (v1.6.2)
+# illustration (v1.6.2) **[deprecated v1.8 Phase 4.2]**
+
+> **v1.8 Phase 4.2 (2026-05-15) 부터 deprecated.** `ai_visual` + `skills/visual_styles/point_color_line.md` 가 동일 라인 일러스트 톤 + 추가 4종 스타일 (`miniature_stock` / `korean_court_scene` / `blueprint_poster` / `cinematic_three_frame`) 을 제공. 신규 trigger 는 `ai_visual` 로 라우팅 권장. 본 스킬은 backwards compat 유지 — 즉시 삭제 X, 운영 누적 0건 1주 후 삭제 검토.
+> - **신 스킬 매칭**: 본 illustration 의 라인 일러스트 톤 = `ai_visual.visual_style = point_color_line` (frontmatter `use_when` 동일).
+> - **이관 경로**: analyze_content 가 본문 보고 `ai_visual` 결정 → `visual_style=point_color_line` 매칭 시 동일 결과. illustration 직접 trigger 는 LLM이 본 스킬 보고 결정한 legacy path.
 
 페이지 도입부 H2 첫 단락 또는 콘텐츠 전환부에 **분위기·감정 전달용 라인 일러스트**.
 
