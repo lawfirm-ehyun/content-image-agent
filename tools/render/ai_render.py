@@ -51,12 +51,16 @@ def _build_illustration_prompt(data: dict[str, Any]) -> str:
         else " with restrained wine-magenta accent on a key element"
     )
 
+    # v1.8 Phase 4.1 (2026-05-15): "clean white background" → "soft light gray
+    # warm neutral background" 로 정합. 정보형 카드 light-gray 배경(--card-bg
+    # #eaeaea) 과 시각 톤 통일. Phase 4.2 에서 ai_visual + 스타일 라이브러리
+    # 로 흡수되며 본 함수 자체 deprecate 예정 — 그 전까지 잠정 표현.
     return (
         "Korean editorial line illustration, minimalist outline drawing.\n"
         f"Scene: {scene}.\n"
         f"Mood: {mood}.\n"
-        f"Single weight black outlines on clean white background, no color fill except"
-        f"{accent_clause}.\n"
+        f"Single weight black outlines on a soft light gray warm neutral background, "
+        f"no color fill except{accent_clause}.\n"
         "Side view, back view, or silhouette — avoid direct front portraits with detailed faces.\n"
         "No text, signs, or letters inside the image.\n"
         "Modern Korean urban context (Korean offices, streets, or courtrooms as fits the scene).\n"
