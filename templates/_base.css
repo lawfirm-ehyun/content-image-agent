@@ -67,6 +67,11 @@
   --neutral-50:  #fafafa;
   --neutral-0:   #ffffff;
 
+  /* card 배경 — Phase 4.1 신설 (2026-05-15). 토스피드 톤 정합용 warm light
+   * gray. Zinc cool-neutral 외 유일 예외 (CLAUDE.md "컬러 시스템" 참조).
+   * .card { background } 와 master_chart.html .card override 에서 사용. */
+  --card-bg: #eaeaea;
+
   /* accent (사용 자제) */
   --accent-success: #16a34a;
   --accent-warning: #f59e0b;
@@ -142,9 +147,13 @@ html, body {
  */
 .card {
   width: 1200px;
-  /* v1.3: outer padding 80→60 (sp-3xl → sp-2xl). 모바일 표시에서 콘텐츠 가용 폭 확보. */
-  padding: var(--sp-2xl);
-  background: var(--neutral-0);
+  /* v1.8 Phase 4.1: padding sp-2xl(60) → sp-3xl(80). 토스피드 "콘텐츠:여백 ≈
+   * 50:50" 톤 정합 (Pattern 2). v1.3 의 60 축소 결정 reverse — Pattern 1 의
+   * warm light gray 배경 도입과 함께 시각 호흡 확보. */
+  padding: var(--sp-3xl);
+  /* v1.8 Phase 4.1: background neutral-0(#fff) → card-bg(#eaeaea) warm light
+   * gray (Pattern 1). Zinc 외 예외 토큰. */
+  background: var(--card-bg);
   display: flex;
   flex-direction: column;
 }
