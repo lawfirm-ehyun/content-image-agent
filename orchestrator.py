@@ -33,6 +33,7 @@ from tools.limits import (
 )
 from tools.llm._common import compact_blocks
 from tools.llm.analyze_content import analyze_content
+from tools.llm.image_review import review_image
 from tools.llm.review import review_input
 from tools.notion import get_client, norm_uuid
 from tools.notion.fetch_pages import fetch_pages_by_status
@@ -324,6 +325,10 @@ async def _process_slot(
 
     # 렌더 + 업로드 (시도 PER_SLOT_ATTEMPTS회)
     image_cost_total = 0.0  # v1.6.1 — AI 카드(gpt-image) 비용 누적
+    # Phase 4.3 (plan §19.16): AI 카드 vision 검수 retry 1회 hard cap.
+    # vision fail / 예외 발생 시 다음 attempt 에서 gpt-image 재호출 + vision 재검수.
+    # retry 1회 소진 후에도 fail 이면 슬롯 폐기 (break).
+    vision_retry_used = False
     while attempts < PER_SLOT_ATTEMPTS:
         attempts += 1
         try:
@@ -336,6 +341,45 @@ async def _process_slot(
             # review_image (Phase 1 = 형식 검증만)
             if not webp.exists() or webp.stat().st_size < 1024:
                 raise RuntimeError(f"산출 webp가 너무 작음: {webp.stat().st_size} B")
+
+            # Phase 4.3 — AI 카드만 vision 검수 (text_rule=zero MVP).
+            # 정보형 5종 (simple_table/chart/comparison_table/key_points_card/timeline) 은
+            # _render_slot 가 template/chart path 로 렌더 — vision 환각 위험 0, skip.
+            if stype in AI_CARD_TYPES:
+                visual_style = (
+                    slot["extracted_data"].get("visual_style")
+                    if stype == "ai_visual" else None
+                )
+                try:
+                    verdict, vision_cost = await review_image(
+                        stype, webp, visual_style=visual_style,
+                    )
+                    slot_cost += vision_cost
+                except Exception as e:
+                    # plan §19.16 사상 — vision 예외도 폐기 (안전 측면).
+                    # API 다운 / key 만료 / timeout → AI 카드 ship 차단.
+                    issues.append(f"vision_review 예외 (시도 {attempts}): {e}")
+                    logger.error(
+                        "slot %s vision_review 예외 시도 %d: %s", stype, attempts, e,
+                    )
+                    if not vision_retry_used:
+                        vision_retry_used = True
+                        continue
+                    break
+
+                if not verdict["passed"]:
+                    issues.append(
+                        f"vision_review 폐기 (시도 {attempts}): {verdict['reason']}"
+                    )
+                    logger.warning(
+                        "slot %s vision fail 시도 %d: %s",
+                        stype, attempts, verdict["reason"],
+                    )
+                    if not vision_retry_used:
+                        vision_retry_used = True
+                        continue  # retry 1회 — 다음 attempt 에서 재시도
+                    break  # retry 소진 — 폐기
+
             review_passed = True
 
             # upload + insert
