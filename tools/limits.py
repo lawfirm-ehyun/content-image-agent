@@ -15,6 +15,7 @@ PER_PAGE_CAP_USD: Final[float] = 2.50             # v1.6.3 (이전 1.20, analyze
 PER_PAGE_TARGET_USD: Final[float] = 1.20          # Phase 4 안정화 목표
 PER_RUN_CAP_USD: Final[float] = 8.00              # v1.6.3 (이전 5.00, 5건 × 평균 $1.20-1.60)
 PER_SLOT_COST_CAP_USD: Final[float] = 0.30        # v1.6.1 — gpt-image thinking 비용 변동성 대비 (§19.13)
+PER_SLOT_VISION_COST_USD: Final[float] = 0.10     # v1.8 Phase 4.3 — vision_review 슬롯당 cap. 사용자 컨펌 2026-05-18 (spike 38d66e9 실측 $0.0065 + 안전 마진 15x, retry 1회 + 대형 이미지 cover). 4.3 Done 5건 누적 평균 < $0.10 확인 게이트 (plan §14.6).
 ANALYZE_BUDGET_USD: Final[float] = 0.80           # v1.6.3 (이전 0.50, slot_selection mix 룰로 cache 47K→54K + output 21K)
 REVIEW_BUDGET_USD: Final[float] = 0.30
 QUERY_JSON_DEFAULT_BUDGET_USD: Final[float] = 0.30
