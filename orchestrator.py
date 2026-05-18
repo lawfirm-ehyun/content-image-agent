@@ -33,6 +33,7 @@ from tools.limits import (
 )
 from tools.llm._common import compact_blocks
 from tools.llm.analyze_content import analyze_content
+from tools.llm.image_review import review_image
 from tools.llm.review import review_input
 from tools.notion import get_client, norm_uuid
 from tools.notion.fetch_pages import fetch_pages_by_status
@@ -52,12 +53,14 @@ from tools.render.template_render import render_template
 logger = logging.getLogger(__name__)
 
 # v1.6.1: Phase 3 감성형 카드 (illustration / kakao_dialogue) 추가.
+# v1.8 Phase 4.2 (2026-05-15): ai_visual 추가 — skills/visual_styles/*.md 기반 라이브러리 카드.
+# illustration 은 backwards compat 유지 (ai_visual + point_color_line 으로 점진 흡수).
 SUPPORTED_TYPES = {
     "simple_table", "chart", "comparison_table", "timeline", "key_points_card",
-    "illustration", "kakao_dialogue",
+    "illustration", "kakao_dialogue", "ai_visual",
 }
 SUPPORTED_CHART_SUB_TYPES = {"line", "bar", "donut", "pie"}
-AI_CARD_TYPES = {"illustration", "kakao_dialogue"}  # ai_render path로 분기되는 카드
+AI_CARD_TYPES = {"illustration", "kakao_dialogue", "ai_visual"}  # ai_render path로 분기
 
 
 @dataclass
@@ -193,6 +196,13 @@ async def _render_slot(
         for i, item in enumerate(items):
             if not item.get("label"):
                 raise ChartDataError(f"items[{i}]에 label 누락 (필수)")
+            # Gap B (2026-05-15): description은 string scalar 필수. LLM이 dict 산출 시
+            # Jinja runtime error 대신 깔끔한 ChartDataError 로 dispose (3-retry 처리).
+            desc = item.get("description")
+            if desc is not None and not isinstance(desc, str):
+                raise ChartDataError(
+                    f"items[{i}].description 은 string scalar 필수 (받은 타입: {type(desc).__name__})"
+                )
         await render_template(
             "key_points_card",
             dict(
@@ -208,6 +218,17 @@ async def _render_slot(
             raise ChartDataError(
                 f"timeline은 최소 3 단계 필요 (받은 값: {len(steps)})"
             )
+        # Gap B (2026-05-15): description / duration은 string scalar 필수. LLM 이 dict
+        # ({value, unit} 등 구조화) 산출 시 Jinja runtime error 대신 깔끔한 ChartDataError
+        # 로 dispose. slot_selection.md spec 명시 + 본 가드 = 1차/2차 방어.
+        for i, step in enumerate(steps):
+            for field in ("description", "duration"):
+                val = step.get(field)
+                if val is not None and not isinstance(val, str):
+                    raise ChartDataError(
+                        f"steps[{i}].{field} 은 string scalar 필수 "
+                        f"(받은 타입: {type(val).__name__})"
+                    )
         for i, step in enumerate(steps):
             if not step.get("label"):
                 raise ChartDataError(f"steps[{i}]에 label 누락 (필수)")
@@ -304,6 +325,10 @@ async def _process_slot(
 
     # 렌더 + 업로드 (시도 PER_SLOT_ATTEMPTS회)
     image_cost_total = 0.0  # v1.6.1 — AI 카드(gpt-image) 비용 누적
+    # Phase 4.3 (plan §19.16): AI 카드 vision 검수 retry 1회 hard cap.
+    # vision fail / 예외 발생 시 다음 attempt 에서 gpt-image 재호출 + vision 재검수.
+    # retry 1회 소진 후에도 fail 이면 슬롯 폐기 (break).
+    vision_retry_used = False
     while attempts < PER_SLOT_ATTEMPTS:
         attempts += 1
         try:
@@ -316,6 +341,45 @@ async def _process_slot(
             # review_image (Phase 1 = 형식 검증만)
             if not webp.exists() or webp.stat().st_size < 1024:
                 raise RuntimeError(f"산출 webp가 너무 작음: {webp.stat().st_size} B")
+
+            # Phase 4.3 — AI 카드만 vision 검수 (text_rule=zero MVP).
+            # 정보형 5종 (simple_table/chart/comparison_table/key_points_card/timeline) 은
+            # _render_slot 가 template/chart path 로 렌더 — vision 환각 위험 0, skip.
+            if stype in AI_CARD_TYPES:
+                visual_style = (
+                    slot["extracted_data"].get("visual_style")
+                    if stype == "ai_visual" else None
+                )
+                try:
+                    verdict, vision_cost = await review_image(
+                        stype, webp, visual_style=visual_style,
+                    )
+                    slot_cost += vision_cost
+                except Exception as e:
+                    # plan §19.16 사상 — vision 예외도 폐기 (안전 측면).
+                    # API 다운 / key 만료 / timeout → AI 카드 ship 차단.
+                    issues.append(f"vision_review 예외 (시도 {attempts}): {e}")
+                    logger.error(
+                        "slot %s vision_review 예외 시도 %d: %s", stype, attempts, e,
+                    )
+                    if not vision_retry_used:
+                        vision_retry_used = True
+                        continue
+                    break
+
+                if not verdict["passed"]:
+                    issues.append(
+                        f"vision_review 폐기 (시도 {attempts}): {verdict['reason']}"
+                    )
+                    logger.warning(
+                        "slot %s vision fail 시도 %d: %s",
+                        stype, attempts, verdict["reason"],
+                    )
+                    if not vision_retry_used:
+                        vision_retry_used = True
+                        continue  # retry 1회 — 다음 attempt 에서 재시도
+                    break  # retry 소진 — 폐기
+
             review_passed = True
 
             # upload + insert
@@ -608,14 +672,17 @@ async def process_single_page(
 
 
 async def main() -> None:
-    """cron / workflow_dispatch 진입점.
+    """cron / workflow_dispatch 진입점 — matrix fan-out only (v1.8 Phase 4.2).
 
-    3 모드 분기 (인자 없음 = 기존 sweep 동작 보존):
-      - 인자 없음: 블로그 + 웹 DB sweep (`process_database`).
+    2 모드 (sweep 폐기, 2026-05-15 사용자 컨펌 + plan §14.9 §5):
       - `--mode list`: 페이지 목록 JSON 을 stdout 출력 (matrix fan-out fetch job).
       - `--page-id ID --source SRC`: 단일 페이지 처리 (matrix process job cell).
 
-    drift 처리 룰 — plan §3 / §12.8.3 / Changelog v1.7.5-plan 과 동기.
+    인자 없음 → error. 이전 sweep 진입점은 v1.7.5-plan 시점에 cron.yml 2-step
+    fan-out 으로 이미 대체되어 사용 사례 없음. `process_database` 함수 본체는
+    backwards compat 유지 (외부 호출자 가능성).
+
+    drift 처리 룰 — plan §3 / §12.8.3 / §14.9 §5 / Changelog v1.7.5-plan / v1.8.0-plan.
     """
     logging.basicConfig(
         level=logging.INFO,
@@ -631,7 +698,10 @@ async def main() -> None:
         pass
 
     parser = argparse.ArgumentParser(
-        description="cron / matrix fan-out 진입점. 인자 없으면 블로그+웹 sweep.",
+        description=(
+            "cron / matrix fan-out 진입점. "
+            "사용: '--mode list' (matrix fetch) 또는 '--page-id ID --source SRC' (process cell)."
+        ),
     )
     parser.add_argument(
         "--mode", choices=["list"], default=None,
@@ -662,24 +732,11 @@ async def main() -> None:
         await process_single_page(args.page_id, args.source)
         return
 
-    # 분기 3 (default) — 전체 sweep (기존 동작 보존)
-    log_db_id = os.environ["NOTION_DB_LOG"].strip()
-    blog_db_id = os.environ["NOTION_DB_BLOG"].strip()
-    web_db_id = os.environ["NOTION_DB_WEB"].strip()
-
-    budget = RunBudget(cap_usd=PER_RUN_CAP_USD)
-    logger.info("=== run 시작 — cap $%.2f ===", PER_RUN_CAP_USD)
-
-    blog_results = await process_database(blog_db_id, "블로그", log_db_id, budget)
-    web_results = await process_database(web_db_id, "웹", log_db_id, budget)
-
-    total_pages = len(blog_results) + len(web_results)
-    total_passed = sum(r.slots_passed for r in blog_results + web_results)
-    total_slots = sum(r.slots_total for r in blog_results + web_results)
-    logger.info(
-        "=== run 완료 — 페이지 %d (블로그 %d + 웹 %d), 슬롯 %d/%d 통과, $%.4f / $%.2f ===",
-        total_pages, len(blog_results), len(web_results),
-        total_passed, total_slots, budget.spent_usd, budget.cap_usd,
+    # 인자 없음 → error (sweep 폐기, Phase 4.2)
+    parser.error(
+        "모드 미지정: '--mode list' (페이지 목록) 또는 "
+        "'--page-id ID --source SRC' (단일 페이지) 필요. "
+        "전체 sweep 은 v1.8 Phase 4.2 에서 폐기됨 (cron.yml 2-step fan-out 사용)."
     )
 
 

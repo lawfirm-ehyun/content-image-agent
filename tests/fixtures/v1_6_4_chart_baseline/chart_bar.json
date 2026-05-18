@@ -34,9 +34,9 @@
   },
   "captured_baseline": {
     "png_path": "chart_bar.png",
-    "png_bytes": 34365,
-    "sha256": "278f3aa31cd89c5437d5bb04ab26f9902a8ecff590fa961995ab01cc646b811a",
-    "captured_at": "2026-05-13T07:01:02+00:00",
-    "git_commit": "a12f666197ada861f48ed71b70b06101cc4e0917"
+    "png_bytes": 33958,
+    "sha256": "6f01207d77d97eb4dcbc7a3ab81cff38b0a26b0651d1eef02a130684e38ce4b3",
+    "captured_at": "2026-05-15T15:22:00+00:00",
+    "git_commit": "aa69eb2_phase4_1_bg_eaeaea"
   }
 }

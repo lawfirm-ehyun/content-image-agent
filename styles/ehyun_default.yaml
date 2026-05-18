@@ -32,8 +32,13 @@ colors:
     300: '#d4d4d8'   # 보더 (연한)
     200: '#e4e4e7'   # 보더 (더 연한)
     100: '#f4f4f5'   # 셀 배경 (회색 헤더)
-    50:  '#fafafa'   # 카드 배경 (옵션)
-    0:   '#ffffff'   # 기본 배경
+    50:  '#fafafa'   # 카드 배경 (옵션, legacy)
+    0:   '#ffffff'   # 기본 배경 (셀 본문 white 등)
+
+  # 카드 배경 — Phase 4.1 신설 (2026-05-15). 토스피드 "소프트 에디토리얼
+  # 미니멀리즘" 톤 정합용 warm light gray. Zinc cool 톤 외 유일 예외 —
+  # 카드 자체 배경에만 사용. 셀/헤더/legend swatch 등은 Zinc 그대로.
+  card_bg: '#eaeaea'
 
   accent:  # 거의 안 씀. 90%는 흑백 + brand.primary
     success: '#16a34a'  # ✓ 표시 등 (key_points_card checked variant)
@@ -82,7 +87,10 @@ card_sizes:
   vertical: { width: 1080, height: 1350, ratio: '4:5', note: '인스타용. Phase 2+' }
 
 # 카드 공통 룰
+# v1.8 Phase 4.1 (2026-05-15): background `#ffffff` → `#eaeaea` (colors.card_bg),
+# padding 64 → 80 (sp-3xl). 토스피드 "소프트 에디토리얼 미니멀리즘" 톤 정합 +
+# 콘텐츠:여백 비율 개선 (Pattern 2). 토큰 변경은 templates/_base.css 와 동기.
 card_defaults:
-  padding: 64px
-  background: '#ffffff'
+  padding: 80px            # sp-3xl. 이전 64px → 모바일 표시 시 여백 확보
+  background: '#eaeaea'    # colors.card_bg, warm light gray (Zinc 외 예외)
   text_color: '#27272a'    # neutral.800

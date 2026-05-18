@@ -48,12 +48,13 @@
 
 ## 기술 스택 한 줄
 
-Python 3.12 / uv / Playwright(Chromium-headless-shell) / Chart.js CDN / Pretendard 1.3.9 / notion-client 3.0 (multi-source DB 자동 처리) / Claude Sonnet 4.6 (LLM은 bundled `claude.exe` 직접 호출 — claude-agent-sdk 0.1.x는 우리 use case에 비효율) / **OpenAI `gpt-image-2-2026-04-21`** (v1.6.4 default — ENV `OPENAI_IMAGE_MODEL_INSTANT/THINKING`로 override 가능. Phase 4 검토: `chatgpt-image-latest` (org verification 후), `gpt-image-1.5` (라인 일러스트 톤 최고)).
+Python 3.12 / uv / Playwright(Chromium-headless-shell) / Chart.js CDN / Pretendard 1.3.9 / notion-client 3.0 (multi-source DB 자동 처리) / Claude Sonnet 4.6 (LLM은 claude-agent-sdk 0.1.77 query() 직접 호출 — plan §12 Week 1-2 spike b7fe789 결과로 채택, SDK는 bundled `claude.exe` subprocess wrapper) / **OpenAI `gpt-image-2-2026-04-21`** (v1.6.4 default — ENV `OPENAI_IMAGE_MODEL_INSTANT/THINKING`로 override 가능. Phase 4 검토: `chatgpt-image-latest` (org verification 후), `gpt-image-1.5` (라인 일러스트 톤 최고)).
 
 ## 컬러 시스템
 
 - brand wine-magenta `#a91c51` monochromatic, 차트 secondary는 desaturated 변형 (토스피드 navy→light blue 패턴 차용)
 - neutral은 Tailwind Zinc (true neutral, brand 언더톤 충돌 X)
+- **카드 배경은 예외** — Phase 4.1 (2026-05-15 결정) `--card-bg: #eaeaea` warm light gray 도입. Zinc cool 톤 외 유일 예외. 토스피드 "소프트 에디토리얼 미니멀리즘" 톤 정합 위해. 적용 위치: `_base.css` `.card { background }` + `master_chart.html` `.card` override. 다른 컴포넌트(셀/헤더/legend swatch 등)는 Zinc 그대로.
 - 차트 multi-series 멀티 컬러 X — 같은 plum 계열 채도 변형으로만
 - brand.primary는 강조 포인트로만 (표 키 컬럼, 차트 메인 라인, 강조 텍스트). 표 본문 셀에는 X.
 
@@ -66,7 +67,7 @@ Python 3.12 / uv / Playwright(Chromium-headless-shell) / Chart.js CDN / Pretenda
 - LLM user_prompt 한계 ~20KB (Windows argv). 초과 시 `analyze_content`가 압축 모드 fallback 적용 (heading + 첫 paragraph + table_row만 유지, `_compress_for_analyze`). 그래도 초과면 RuntimeError raise.
 - WebP 변환은 lossless가 lossy q=92보다 작음 (텍스트+단색 콘텐츠 특성). default lossless=True.
 - **page_source / status 한글 통일**: `Literal["블로그", "웹"]`, `이미지 필요` / `발행 필요` / `이미지 작업 중` (모두 공백 포함). 영문/공백 없는 표기는 폐기됨.
-- **claude-agent-sdk는 우회**, bundled `claude.exe`만 subprocess로 직접 호출 (`tools/llm/_common.py`). skills 자동 로드 X — markdown을 system_prompt에 직접 inject (옵션 A).
+- **claude-agent-sdk 0.1.77 query() 직접 호출** (`tools/llm/_common.py:22-28`). SDK는 bundled `claude.exe` subprocess wrapper — plan §12 Week 1-2 spike (b7fe789, N=4 cost 0.34-0.64x cheaper + byte-identical output 검증) 결과로 SDK 우회 사상 폐기. 가드: max_turns=1 + setting_sources=[] (default CLAUDE.md/settings.json 자동 inject 차단, 옵션 A). skills 자동 로드 X — markdown을 system_prompt에 직접 inject.
 - **비용 cap 단계 (v1.6.3 갱신)**: `PER_PAGE_CAP_USD = 2.50` / `PER_RUN_CAP_USD = 8.00` / `PER_SLOT_COST_CAP_USD = 0.30` / `ANALYZE_BUDGET_USD = 0.80` / `REVIEW_BUDGET_USD = 0.30`. AI mix 4슬롯 + slot_selection v1.6.2 두꺼움 반영. Phase 4 안정화 후 페이지 cap $1.20 복귀 목표 (analyze prompt 슬림 + slot_selection 다이어트).
 - **5/12 e2e 실측**: ① 1페이지 3슬롯 (comparison_table + key_points_card×2) = $0.7723 / 5분 / 3/3 통과. ② P3.3+P3.4 통합 후 후속 e2e — analyze cap 초과 → §19.9 page try/except가 graceful 흡수. cap 상향 후 재시도. **노션 select 옵션 자동 생성 검증 OK**.
 
