@@ -23,6 +23,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
 
+# Jinja2 StrictUndefined 환경의 missing key/attr 에러 — 데이터 결함 (재시도 무의미).
+# 5/18 e2e: timeline의 옵션 필드 `duration` 누락이 매번 같은 에러를 일으켰음 → 3회 헛재시도.
+from jinja2 import UndefinedError as JinjaUndefinedError
+
 from tools.budget import RunBudget
 from tools.image.webp_converter import png_to_webp
 from tools.limits import (
@@ -49,6 +53,7 @@ from tools.render.chart_render import (
     render_chart,
 )
 from tools.render.template_render import render_template
+from tools.visual_styles import load_visual_style
 
 logger = logging.getLogger(__name__)
 
@@ -126,12 +131,43 @@ async def _log_review_dispose(
         logger.error("log_metadata (review dispose) 실패 (계속 진행): %s", e)
 
 
+def _resolve_gen_method(stype: str, data: dict[str, Any]) -> str:
+    """카드 type별 `생성 방식` 노션 로그값 결정.
+
+    5/18 발견 #1 (orchestrator drift): ai_visual 신설 후 분기 누락으로 항상 'template'
+    로 찍히던 버그 fix. ai_visual은 visual_style frontmatter quality 에 따라 분기.
+
+    렌더 성공 전(default) / 렌더 실패 fallback 양쪽에서 사용 — 같은 결정 룰 단일화.
+    visual_style 누락/로드 실패면 안전하게 'gpt-image-2-instant' (보수적 = medium quality).
+    """
+    if stype == "illustration":
+        return "gpt-image-2-instant"
+    if stype == "kakao_dialogue":
+        return "gpt-image-2-thinking"
+    if stype == "ai_visual":
+        vs_name = (data.get("visual_style") or "").strip()
+        if vs_name:
+            try:
+                vs = load_visual_style(vs_name)
+                return (
+                    "gpt-image-2-thinking" if vs.quality == "high"
+                    else "gpt-image-2-instant"
+                )
+            except Exception:
+                # 폐기될 슬롯이지만 로그상 'template'로 찍히면 운영 혼란 — instant fallback.
+                pass
+        return "gpt-image-2-instant"
+    return "template"
+
+
 async def _render_slot(
     slot: dict[str, Any], out_png: Path,
-) -> float:
+) -> tuple[float, str]:
     """슬롯 type별 렌더 분기. 실패 시 예외 raise.
 
-    반환: image generation 비용 USD (template/chart는 0.0, AI 카드는 gpt-image 비용).
+    반환: (image generation 비용 USD, 생성 방식).
+      - template/chart: (0.0, "template").
+      - AI 카드: (gpt-image 비용, "gpt-image-2-instant" | "gpt-image-2-thinking").
     LLM review 비용은 caller(_process_slot)가 별도 누적.
     """
     stype = slot["type"]
@@ -171,6 +207,7 @@ async def _render_slot(
             emphasis_index=data.get("emphasis_index"),
         )
         await render_chart(spec, out_png)
+        return 0.0, "template"
     elif stype == "simple_table":
         await render_template(
             "simple_table",
@@ -183,6 +220,7 @@ async def _render_slot(
             ),
             out_png,
         )
+        return 0.0, "template"
     elif stype == "key_points_card":
         items = data.get("items") or []
         if len(items) < 3:
@@ -203,6 +241,9 @@ async def _render_slot(
                 raise ChartDataError(
                     f"items[{i}].description 은 string scalar 필수 (받은 타입: {type(desc).__name__})"
                 )
+            # 5/18 fix: Jinja2 StrictUndefined 환경에서 옵션 필드 누락 = UndefinedError.
+            # template의 `{% if item.description %}` 가 missing key 만나면 즉시 raise.
+            item.setdefault("description", None)
         await render_template(
             "key_points_card",
             dict(
@@ -212,6 +253,7 @@ async def _render_slot(
             ),
             out_png,
         )
+        return 0.0, "template"
     elif stype == "timeline":
         steps = data.get("steps") or []
         if not steps or len(steps) < 3:
@@ -232,6 +274,13 @@ async def _render_slot(
         for i, step in enumerate(steps):
             if not step.get("label"):
                 raise ChartDataError(f"steps[{i}]에 label 누락 (필수)")
+            # 5/18 fix (root cause of timeline 100% 실패): timeline.html 의
+            # `{% if step.duration %}` / `step.icon` / `step.description` 이 Jinja2
+            # StrictUndefined 환경에서 missing key 만나면 즉시 UndefinedError.
+            # LLM이 옵션 필드를 안 넣어도 정상이므로 None으로 명시.
+            step.setdefault("description", None)
+            step.setdefault("duration", None)
+            step.setdefault("icon", None)
         await render_template(
             "timeline",
             dict(
@@ -241,6 +290,7 @@ async def _render_slot(
             ),
             out_png,
         )
+        return 0.0, "template"
     elif stype == "comparison_table":
         # 구조 검증 — column_headers/rows length mismatch는 LLM 환각 신호 → 즉시 폐기.
         # v1.4: highlight_column_index 제거 (§23 광고성 신호 회피) — 모든 비교 컬럼 동등.
@@ -263,13 +313,24 @@ async def _render_slot(
             ),
             out_png,
         )
+        return 0.0, "template"
     elif stype in AI_CARD_TYPES:
-        # v1.6.1 — AI 카드 (illustration / kakao_dialogue). ai_render가 gpt-image 호출 + PNG 저장.
+        # v1.6.1 — AI 카드 (illustration / kakao_dialogue / ai_visual). ai_render가
+        # gpt-image 호출 + PNG 저장. 5/18 fix: ai_visual gen_method가 항상 'template'로
+        # 찍히던 분기 누락 버그 — ImageResult.quality 기반으로 instant/thinking 결정.
         result = await render_ai_card(stype, data, out_png)
-        return result.cost_usd
+        if stype == "illustration":
+            gen_method = "gpt-image-2-instant"
+        elif stype == "kakao_dialogue":
+            gen_method = "gpt-image-2-thinking"
+        else:  # ai_visual
+            gen_method = (
+                "gpt-image-2-thinking" if result.quality == "high"
+                else "gpt-image-2-instant"
+            )
+        return result.cost_usd, gen_method
     else:
         raise ValueError(f"지원되지 않는 type={stype!r}")
-    return 0.0  # template / chart는 generation 비용 0 (LLM review만 누적)
 
 
 async def _process_slot(
@@ -329,11 +390,14 @@ async def _process_slot(
     # vision fail / 예외 발생 시 다음 attempt 에서 gpt-image 재호출 + vision 재검수.
     # retry 1회 소진 후에도 fail 이면 슬롯 폐기 (break).
     vision_retry_used = False
+    # 5/18 fix: 렌더 성공 전(default)에도 노션 로그에 정확한 gen_method 박기 위해
+    # slot 데이터 기반 사전 결정. 렌더 성공 시 _render_slot 반환값으로 덮어씀.
+    gen_method: str = _resolve_gen_method(stype, slot["extracted_data"])
     while attempts < PER_SLOT_ATTEMPTS:
         attempts += 1
         try:
             png = work_dir / f"slot_{stype}_{attempts}.png"
-            image_cost = await _render_slot(slot, png)
+            image_cost, gen_method = await _render_slot(slot, png)
             image_cost_total += image_cost
             slot_cost += image_cost
             webp = png_to_webp(png)
@@ -390,9 +454,19 @@ async def _process_slot(
                 file_upload_id=file_upload_id,
             )
             break
-        except ChartDataError as e:
-            issues.append(f"차트 데이터 검증 실패: {e}")
-            break  # 데이터 검증은 재시도 무의미
+        except (ChartDataError, ValueError, JinjaUndefinedError, KeyError) as e:
+            # 5/18 fix (root cause #4 헛재시도 차단):
+            # - ChartDataError: 정보형 카드 데이터 검증 실패
+            # - ValueError: ai_render의 visual_style 누락 등 입력 결함
+            # - JinjaUndefinedError: StrictUndefined 환경 옵션 필드 missing
+            # - KeyError: dict access 누락
+            # 모두 같은 input 으로 재시도해도 안 풀림 → 즉시 break.
+            issues.append(f"데이터 결함 (시도 {attempts}): {type(e).__name__}: {e}")
+            logger.warning(
+                "slot %s 데이터 결함 시도 %d (재시도 중단): %s: %s",
+                stype, attempts, type(e).__name__, e,
+            )
+            break
         except Exception as e:
             issues.append(f"시도 {attempts} 실패: {e}")
             logger.warning("slot %s 시도 %d 실패: %s", stype, attempts, e)
@@ -403,17 +477,13 @@ async def _process_slot(
     if page_cost_so_far + slot_cost > PER_PAGE_CAP_USD:
         issues.append(f"페이지 비용 cap 초과 ({page_cost_so_far + slot_cost:.3f} USD)")
 
-    # v1.6.1 — generation_method: AI 카드 분기. quality에 따라 instant/thinking.
-    if stype == "illustration":
-        gen_method: Literal["template", "gpt-image-2-instant", "gpt-image-2-thinking"] = (
-            "gpt-image-2-instant"
-        )
-    elif stype == "kakao_dialogue":
-        gen_method = "gpt-image-2-thinking"
-    else:
-        gen_method = "template"
+    # 5/18 fix: gen_method 결정 분기를 _render_slot/_resolve_gen_method 로 일원화.
+    # ai_visual 분기 누락(stype else로 빠져 'template' 로 잘못 찍히던 버그) 해소.
 
-    # 로그 기록 (성공/실패 무관)
+    # 로그 기록 (성공/실패 무관) — gen_method 는 Literal 제약 만족 (Final 상수 set).
+    _gm: Literal["template", "gpt-image-2-instant", "gpt-image-2-thinking"] = (
+        gen_method  # type: ignore[assignment]
+    )
     try:
         await log_metadata(
             log_db_id=log_db_id,
@@ -421,7 +491,7 @@ async def _process_slot(
             page_source=page_source,
             slot_type=stype,
             slot_sub_type=sub,
-            generation_method=gen_method,
+            generation_method=_gm,
             input_data={
                 **slot["extracted_data"],
                 "notion_block_id": new_block_id,

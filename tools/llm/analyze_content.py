@@ -123,7 +123,50 @@ async def analyze_content(blocks: list[dict[str, Any]]) -> tuple[list[dict[str, 
     # (페이지 cap $1.50 안에서 안전: analyze 0.50 + review × 슬롯3 × 0.30 = $1.40)
     parsed, cost = await query_json(user_prompt, system, max_budget_usd=ANALYZE_BUDGET_USD)
     if isinstance(parsed, dict) and "image_slots" in parsed:
-        return parsed["image_slots"], cost
-    if isinstance(parsed, list):
-        return parsed, cost
-    raise ValueError(f"analyze_content 응답 형식 예상 외: {parsed!r}")
+        slots = parsed["image_slots"]
+    elif isinstance(parsed, list):
+        slots = parsed
+    else:
+        raise ValueError(f"analyze_content 응답 형식 예상 외: {parsed!r}")
+
+    # 5/18 fix (root cause #2): ai_visual 슬롯의 visual_style 누락이 ai_render 까지
+    # 미뤄져 ValueError → 같은 input 3회 헛재시도 → 슬롯 폐기. slot_selection.md
+    # L126·190·293 "매칭 실패 시 슬롯 폐기, 임의 default 금지" 사상을 analyze 단계 게이트로
+    # 강제. drop 된 슬롯은 cron stderr warning 으로 운영 추적 (노션 로그 박는 enhancement는
+    # follow-up — 시그니처 변경 영향이 spike 스크립트까지 미침).
+    valid_styles = {s.name for s in list_visual_styles()}
+    filtered: list[dict[str, Any]] = []
+    for slot in slots:
+        if not isinstance(slot, dict):
+            logger.warning("analyze gate: 슬롯이 dict 아님 — drop: %r", slot)
+            continue
+        if slot.get("type") == "ai_visual":
+            data = slot.get("extracted_data") or {}
+            vs = (data.get("visual_style") or "").strip() if isinstance(data, dict) else ""
+            scene = (data.get("scene") or "").strip() if isinstance(data, dict) else ""
+            mood = (data.get("mood") or "").strip() if isinstance(data, dict) else ""
+            reasons: list[str] = []
+            if not vs:
+                reasons.append("visual_style 누락/빈값")
+            elif valid_styles and vs not in valid_styles:
+                reasons.append(
+                    f"visual_style={vs!r} 미정의 (유효: {sorted(valid_styles)})"
+                )
+            if not scene:
+                reasons.append("scene 누락/빈값")
+            if not mood:
+                reasons.append("mood 누락/빈값")
+            if reasons:
+                logger.warning(
+                    "analyze gate: ai_visual 슬롯 폐기 — %s | data=%r",
+                    "; ".join(reasons), data,
+                )
+                continue
+        filtered.append(slot)
+
+    if len(filtered) != len(slots):
+        logger.info(
+            "analyze gate: ai_visual %d개 폐기 (전체 %d → %d 슬롯)",
+            len(slots) - len(filtered), len(slots), len(filtered),
+        )
+    return filtered, cost
