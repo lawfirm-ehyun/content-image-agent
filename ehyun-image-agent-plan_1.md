@@ -166,6 +166,7 @@ plan 안에서 자주 참조하는 핵심 4개:
 | **v1.8 신규** — `quality=high` (cinematic_three_frame) 실비 vs 추정 ($0.25/장) 차이 | Phase 4.2 Do 첫 5건 e2e 후. PER_SLOT_COST_CAP_USD ($0.30) 안전 마진 결정. |
 | **v1.8 신규** — reference image 의 LLM 매칭 품질 영향 | Phase 4.2 Do 1주 운영 후 (reference 있는 스타일 vs 없는 스타일 폐기율 비교). |
 | **v1.8 신규** — `ai_visual` 슬롯 2개 trigger 시 같은 visual_style 연속 허용 여부 | Phase 4.2 Do — §19.17 mix 룰 갱신과 연동. |
+| **v1.8 신규** — vision input path = anthropic SDK 별 path (사용자 컨펌 2026-05-18) | claude-agent-sdk 0.1.77 ContentBlock ImageBlock 부재 사유 (`types.py:992-999`). plan §12 SDK 통일 결정과 직교. vision_review.py 가 anthropic.Anthropic().messages.create() 직접 호출. token-ledger 환산 path 신설 사유. |
 
 ## 11. 사용자 사전 작업 체크리스트
 
@@ -506,11 +507,11 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 - `kakao_dialogue` 한글 정확성 (Levenshtein ≤ 2) — §19.11 카드별 분기 코드 작업
 - 변호사법 §23 키워드 이미지 텍스트 검사 — vision OCR 추출 → `tools/compliance/keywords.py:check_keywords` 호출
 
-**vision 모델 — Claude Sonnet 4.6 vision (사용자 컨펌 2026-05-14)**:
-- 기존 SDK 인프라 (`tools/llm/_common.py:query_json` + `claude-agent-sdk` 0.1.77) 그대로 재사용
-- `token-ledger.ndjson` 비용 계상 일관성 ✓
-- §23 LLM reasoning 정확성: 기존 review.py 와 같은 모델 → reasoning 톤 일관
-- OCR 정확도 / latency / cost 1페이지 실측 spike → Phase 4.3 Design 첫 작업 (§10 미결정 row)
+**vision 모델 — Claude Sonnet 4.6 vision (사용자 컨펌 2026-05-14) / vision input path — anthropic SDK 별 path (사용자 컨펌 2026-05-18)**:
+- **path**: anthropic SDK 별 신설 — `claude-agent-sdk` 0.1.77 ContentBlock 에 ImageBlock 정의 부재 (`claude_agent_sdk/types.py:992-999` 확인, 2026-05-18). vision 은 plan §12 SDK 통일 결정과 직교. `anthropic.Anthropic().messages.create()` 직접 호출, multimodal content array (image base64 source) 표준 path. (A) streaming dict raw passthrough 미문서화 path 의존 위험 (0.1.78+ breakage) 회피 사유로 (B) 단독 채택.
+- **모델**: Sonnet 4.6 (`claude-sonnet-4-6`). LLM reasoning 톤 일관 — 기존 review.py 와 같은 모델.
+- **비용 계상**: anthropic.Usage (input_tokens / output_tokens / cache_*) → cost 환산 path 신설 → token-ledger.ndjson 통합 일관성 유지.
+- OCR 정확도 / latency / cost 1페이지 실측 spike → Phase 4.3 Design 첫 작업 (§10 미결정 row, vision spike).
 
 **산출물 (Phase 4.3 Do)**:
 - `tools/render/vision_review.py` (신규) — 이미지 → vision LLM → JSON {text_detected, text_pixels_pct, ocr_tokens, korean_text, §23_violations}
@@ -619,7 +620,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 | skill | 4.2 | `skills/image_types/ai_visual.md` | **신설** — review_input loader 정합 (Gap A, 2026-05-15 발견). `tools/llm/review.py` 가 `load_skill(f"image_types/{slot_type}.md")` 호출 시 파일 부재면 슬롯 폐기 → ai_visual 모든 슬롯 review 단계 dispose. visual_styles_library 참조 + scene/mood/visual_style/accent_target 검증 룰 |
 | 신규 디렉터리 | 4.2 | `skills/visual_styles/` + `reference_library/visual_styles/` | 5종 스타일 md + reference 폴더 |
 | slot_selection | 4.2 | `skills/meta/slot_selection.md` | mix 룰 갱신 (슬롯 3 cap, ai_visual 통합) |
-| vision review | 4.3 | `tools/render/vision_review.py` (신규) | Sonnet 4.6 vision 호출 + JSON 반환 |
+| vision review | 4.3 | `tools/render/vision_review.py` (신규) | **anthropic SDK 별 path** (claude-agent-sdk ContentBlock ImageBlock 부재 — types.py:992-999 확인, 2026-05-18 사용자 컨펌). multimodal content (image base64) + Sonnet 4.6 vision + JSON 반환 + anthropic.Usage → token-ledger 환산 |
 | §19 격상 | 4.3 | `plan_history.md` §19.16/§19.17 | paper-only → implemented 격상 |
 | 비용 상수 | 4.3 | `tools/limits.py` | `PER_SLOT_VISION_COST_USD` 신설 + 페이지 cap 재검토 |
 | CLAUDE.md 동기 | 4.1-4.3 각 단계 | `CLAUDE.md` | 절대 룰 #5 (카드 라인업) + 운영 가드 §19.16/17 격상 명시 |
@@ -634,6 +635,12 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 | §3 | vision review 모델 | Claude Sonnet 4.6 vision (SDK 인프라 재사용). Phase 4.3 Design 첫 작업 1페이지 spike. |
 | §4 | 스타일 라이브러리 frontmatter | 필수 6 (`name`/`tone`/`use_when`/`prompt_template`/`aspect_ratio`/`text_rule`) + 선택 3 (`reference_dir`/`quality`/`accent_target_default`). |
 | §5 | sweep 모드 폐기 여부 | Phase 4 진입 시 sweep 폐기, fan-out only. orchestrator.main() argparse 분기 단순화. |
+
+**해소 (사용자 컨펌 2026-05-18)**:
+
+| # | 항목 | 결정 |
+|---|---|---|
+| §14.4 | vision input path | anthropic SDK 별 path 신설. claude-agent-sdk 0.1.77 ContentBlock 에 ImageBlock 정의 부재 (`types.py:992-999`) 사유. plan §12 SDK 통일 결정과 직교. token-ledger 환산 path 신설 사유. |
 
 **Phase 4 진입 후 미해결** → §10 `v1.8 신규` 4개 row 참조 (high quality 실비 / reference 매칭 영향 / 같은 visual_style 연속 / vision 모델 spike).
 
