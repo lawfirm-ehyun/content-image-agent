@@ -502,10 +502,10 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 
 ### 14.4 Phase 4.3 — vision OCR 텍스트 환각 검증 (3-5일)
 
-**범위**: §19.16 (plan_history) paper-only → 실구현 격상. 모든 AI 카드 산출물을 vision LLM 이 평가:
+**범위 (MVP 단순화, 2026-05-18 사용자 컨펌)**: §19.16 (plan_history) paper-only → 실구현 격상. AI 카드 산출물을 vision LLM 이 평가 — **text_rule=zero 단일 분기**:
 - 텍스트 검출 (스타일 `text_rule=zero` 인 경우) → 텍스트 픽셀 ≥ 1% 또는 OCR token ≥ 3개 → retry 1회 → 폐기
-- `kakao_dialogue` 한글 정확성 (Levenshtein ≤ 2) — §19.11 카드별 분기 코드 작업
-- 변호사법 §23 키워드 이미지 텍스트 검사 — vision OCR 추출 → `tools/compliance/keywords.py:check_keywords` 호출
+- §23 키워드 검사는 `tools/compliance/keywords.py` + `tools/llm/review.py` 1차 pass 에서 본문 텍스트 단계에 작동 — **vision layer 중복 X**. AI 카드 prompt 는 본문 사실만 사용 (정보형 5종은 본문 사실 직접 인용, 감성형 ai_visual 은 scene/mood 합성, kakao_dialogue 는 본문 messages 인용) — keywords 검사는 본문 단계로 충분.
+- `kakao_dialogue` 한글 정확성 (Levenshtein ≤ 2) — kakao trigger 0건이라 **paper-only 유지** (§19.11 보류 row 참조). 실제 trigger 시 §19.11 + vision_review 본문에 분기 추가.
 
 **vision 모델 — Claude Sonnet 4.6 vision (사용자 컨펌 2026-05-14) / vision input path — anthropic SDK 별 path (사용자 컨펌 2026-05-18)**:
 - **path**: anthropic SDK 별 신설 — `claude-agent-sdk` 0.1.77 ContentBlock 에 ImageBlock 정의 부재 (`claude_agent_sdk/types.py:992-999` 확인, 2026-05-18). vision 은 plan §12 SDK 통일 결정과 직교. `anthropic.Anthropic().messages.create()` 직접 호출, multimodal content array (image base64 source) 표준 path. (A) streaming dict raw passthrough 미문서화 path 의존 위험 (0.1.78+ breakage) 회피 사유로 (B) 단독 채택.
@@ -519,11 +519,11 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 - `tools/limits.py` — `PER_SLOT_VISION_COST_USD` 신설 (예상 $0.05/슬롯)
 - 노션 로그 DB row 추가 필드 (옵션) — `vision_review_passed: checkbox`, `vision_review_reason: rich_text`
 
-**Done 정의 (4.3)**:
-- 5종 스타일 각 1회 + kakao_dialogue 1회 vision_review 통과
+**Done 정의 (4.3, MVP 단순화 2026-05-18)**:
+- 5종 스타일 각 1회 vision_review 통과 (text_rule=zero 단일 분기)
 - 텍스트 환각 의도적 시뮬레이션 1건 → 폐기 동작 확인
-- §23 키워드 이미지 텍스트 1건 시뮬레이션 → 폐기 동작 확인
 - `PER_SLOT_VISION_COST_USD` 5건 실측 평균 < $0.10
+- (§23 키워드 / kakao OCR 분기 — MVP scope 밖. 본문 1차 pass / trigger 시 추가)
 
 ### 14.5 페이지당 슬롯 cap — 3개로 하향 (v1.8)
 
@@ -572,7 +572,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 
 #### 4.3 Done
 - [ ] `tools/render/vision_review.py` 신설 + 슬롯 폐기 분기
-- [ ] 텍스트 환각 / §23 키워드 / kakao OCR Levenshtein 3종 분기 동작
+- [ ] text_rule=zero 텍스트 환각 단일 분기 동작 (MVP 단순화 2026-05-18 — §23 키워드는 keywords.py + review.py 본문 1차 pass / kakao OCR 은 trigger 0건 paper-only)
 - [ ] `PER_SLOT_VISION_COST_USD` 5건 실측 평균 < $0.10
 - [ ] §19.16/§19.17 plan_history 상 paper-only → implemented 격상
 - [ ] 페이지 cap $1.20 복귀 검토 (§10 미결정)

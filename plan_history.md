@@ -121,7 +121,7 @@ AI (gpt-image thinking) — Image 6 톤 (warm off-white 종이, serif 본문, br
   - 텍스트 픽셀 비율 > 1% 또는 OCR token ≥ 3개 또는 한글/영문 단어 detect: 환각 의심
   - retry 1회 (gpt-image 다른 seed + prompt 에 "no text" 강조)
   - 그래도 텍스트 있으면 슬롯 폐기 + 로그 DB row 폐기 reason 기록
-- **§23 키워드 이미지 텍스트 검사 동반**: vision OCR 추출 텍스트 → `tools/compliance/keywords.py:check_keywords` 호출 (4 카테고리 regex). hit 시 즉시 폐기.
+- **§23 키워드 검사 — vision layer 중복 X (MVP 단순화 2026-05-18 사용자 컨펌)**: `tools/compliance/keywords.py` + `tools/llm/review.py` 1차 pass 에서 본문 단계에 작동. AI 카드 prompt 는 본문 사실 인용 또는 합성 (scene/mood) — 본문 통과한 단계에서 vision 재검사 중복. trigger 발생 시 (스타일 `text_rule=factual` 또는 본문 path 우회 발견) vision layer 분기 추가.
 - **현재 상태**: 5/12 e2e 에서 gpt-image-2 자체 텍스트 환각 0건이지만, ai_visual 5종 + cinematic high quality 도입으로 환각 확률 ↑ 예상. **Phase 4.3 진입 트리거 — paper-only → implemented 격상 (plan §14.4)**. 신규 파일 `tools/render/vision_review.py`, 비용 상수 `PER_SLOT_VISION_COST_USD` (예상 $0.05-$0.10/슬롯, Phase 4.3 Design spike 후 확정).
 
 ### §19.17 mix 정책 위반 검증 (Phase 4.2 진입 트리거 — plan v1.8.0)
