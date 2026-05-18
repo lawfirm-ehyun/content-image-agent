@@ -571,11 +571,11 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 - [x] vision 모델 spike 1페이지 (Sonnet 4.6 vision via anthropic SDK 0.102, 2026-05-18, spike commit 38d66e9) → cost $0.0065 / latency 2.883s / accuracy text_detected=false (text_rule=zero 정합, page_id 35543f95d72a811cb5ddf87e3c3c1d49 사용자 ground truth 컨펌 2026-05-18). PER_SLOT_VISION_COST_USD cap $0.10 결정 (사용자 컨펌 2026-05-18 — retry 1회 + 대형 이미지 cover 사유).
 
 #### 4.3 Done
-- [ ] `tools/render/vision_review.py` 신설 + 슬롯 폐기 분기
-- [ ] text_rule=zero 텍스트 환각 단일 분기 동작 (MVP 단순화 2026-05-18 — §23 키워드는 keywords.py + review.py 본문 1차 pass / kakao OCR 은 trigger 0건 paper-only)
-- [ ] `PER_SLOT_VISION_COST_USD` 5건 실측 평균 < $0.10
-- [ ] §19.16/§19.17 plan_history 상 paper-only → implemented 격상
-- [ ] 페이지 cap $1.20 복귀 검토 (§10 미결정)
+- [x] `tools/render/vision_review.py` 신설 + 슬롯 폐기 분기 (2026-05-18 commit dbf674a vision_review.py + a1cc037 image_review.py + c30df46 orchestrator 통합, retry 1회 hard cap)
+- [x] text_rule=zero 텍스트 환각 단일 분기 동작 (격리 검증 2026-05-18 — `scripts/_check_vision_dispose.py` chart_bar.png 33KB → text_pixels_pct=18.5 / ocr_tokens=28 / verdict.passed=False / reason 한글·영문 OCR 정확. cost $0.007716. §23 키워드 keywords.py + review.py 본문 1차 pass / kakao OCR trigger 0건 paper-only 유지)
+- [~] `PER_SLOT_VISION_COST_USD` 5건 실측 평균 < $0.10 — **운영 자연 cover 의존** (자동 sourcing 후보 0건, 4.2 Done [~] cinematic 실비와 동일 path). 현재 2건 누적 ($0.0065 spike 38d66e9 + $0.007716 chart_bar 격리) 평균 $0.0071 / cap $0.10. 다음 운영 세션 3건 trigger 후 close.
+- [ ] §19.16/§19.17 plan_history 상 paper-only → implemented 격상 (위 [~] 5건 누적 cover 후 commit, e2e 실측 데이터 포함)
+- [ ] 페이지 cap $1.20 복귀 검토 (§10 미결정, 운영 5건 누적 후 결정)
 
 ### 14.7 비용 시뮬레이션 — 페이지당 슬롯 3 cap 가정
 
