@@ -14,9 +14,9 @@ jobs:
     outputs:
       pages: ${{ steps.list.outputs.pages }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v6
 
       - name: Install Python deps
         run: uv sync
@@ -49,9 +49,9 @@ jobs:
       matrix:
         include: ${{ fromJSON(needs.fetch.outputs.pages) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: astral-sh/setup-uv@v3
+      - uses: astral-sh/setup-uv@v6
 
       - name: Install Python deps
         run: uv sync
