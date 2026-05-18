@@ -568,7 +568,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 
 #### 4.3 진입 prerequisite
 - [-] 4.2 Done — 7/8 [x], #5 (cinematic 실비) 만 [~] 4.3 운영 cover 의존. 4.3 진입은 #5와 직교 (vision spike 별도). 사용자 결정 사유 — Phase 4.3 Design 첫 작업은 vision spike, cinematic 실비는 운영 5건 누적 추적.
-- [ ] vision 모델 spike 1페이지 (Sonnet 4.6 vision) → cost/accuracy/latency 측정
+- [x] vision 모델 spike 1페이지 (Sonnet 4.6 vision via anthropic SDK 0.102, 2026-05-18, spike commit 38d66e9) → cost $0.0065 / latency 2.883s / accuracy text_detected=false (text_rule=zero 정합, page_id 35543f95d72a811cb5ddf87e3c3c1d49 사용자 ground truth 컨펌 2026-05-18). PER_SLOT_VISION_COST_USD cap $0.10 결정 (사용자 컨펌 2026-05-18 — retry 1회 + 대형 이미지 cover 사유).
 
 #### 4.3 Done
 - [ ] `tools/render/vision_review.py` 신설 + 슬롯 폐기 분기
@@ -587,7 +587,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 | review_input × 3 슬롯 | $0.15 | $0.15 | 슬롯당 $0.05, REVIEW_BUDGET_USD=$0.30 cap |
 | gpt-image 1536×1024 medium × 1-2 슬롯 | $0.063-$0.126 | — | `GPT_IMAGE_PRICE_USD[("1536x1024","medium")] = $0.063` |
 | gpt-image 1024×1536 high × 1 슬롯 (cinematic) | — | $0.25 | `GPT_IMAGE_PRICE_USD[("1024x1536","high")] = $0.25` |
-| vision_review × 3 슬롯 (Phase 4.3) | $0.15 | $0.15 | 슬롯당 $0.05 추정, Sonnet 4.6 vision spike 후 확정 |
+| vision_review × 3 슬롯 (Phase 4.3) | $0.020 (실측) | $0.020 (실측) | 슬롯당 cap **$0.10** (사용자 컨펌 2026-05-18 — retry 1회 + 대형 이미지 cover) / **실측 $0.0065** (2026-05-18 spike 38d66e9, Sonnet 4.6 anthropic SDK 0.102, image 1.478 MB webp, 1859 in / 62 out tokens). 추가 5건 누적은 4.3 Do 단계 자연 cover. |
 
 **페이지 총 비용 — 슬롯 3 cap (정보형 1-2 + 감성형 1-2 mix)**:
 
@@ -601,7 +601,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 **월 비용 (40편 기준, medium 전형 가정)**: 40 × $0.78 = **~$31**. 페이지 cap $1.20 복귀 시 $48 cap 내. 현재 $2.50 cap 은 edge case 안전 마진 + 5/12 실측 $0.96 (illustration 포함) 대응.
 
 **상수 갱신 후보 (Phase 4.3 Done 후 결정)**:
-- `PER_SLOT_VISION_COST_USD = 0.10` 신설 (spike 후 확정)
+- `PER_SLOT_VISION_COST_USD = 0.10` **확정** (사용자 컨펌 2026-05-18, spike 실측 $0.0065 + 안전 마진 15x). 4.3 Do 단계 `tools/limits.py` 신설 commit 별도.
 - `PER_PAGE_CAP_USD` $2.50 유지 또는 $1.50 으로 단계 하향 (slot 3 cap + vision 인프라 안정화 후)
 
 ### 14.8 영향 받는 코드 영역 (Phase 4.1/4.2/4.3 Do 단계 작업, 본 Plan 세션 = 변경 0)
