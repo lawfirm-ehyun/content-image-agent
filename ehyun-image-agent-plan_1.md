@@ -397,7 +397,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 | 길이 제한 | `ALT_TEXT_MAX_CHARS = 80` (한국어 정보 밀도 ↑ — 영문 125자 ≈ 한국어 60-80자). |
 | 빈값 정책 | LLM 생성 실패 / validator 초과 시 caption 생략, 슬롯은 살림. `alt_text_status` 로그로 추적 → 1주 운영 후 폐기 전환 재검토. |
 
-### 13.5 SEO 생성 룰 (6개 — `slot_selection.md` 와 `analyze_content` system prompt)
+### 13.5 SEO 생성 룰 (7개 — `slot_selection.md` 와 `analyze_content` system prompt)
 
 1. **한국어 80자 이하**. 초과 시 review.py 가 슬롯 폐기 또는 caption 생략 분기.
 2. **Front-load 키워드** — 핵심 명사를 앞에 배치. 서술문 prefix 지양 ("다음 표는 ~을 정리한" X).
@@ -405,6 +405,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 4. **본문 단순 반복 X** — 카드 안 텍스트/본문 문장 통째 복붙 X. 카드가 표현하는 *관계/추이/패턴/주제* 묘사. (Levenshtein 거리 5 이하 시 review.py 경고)
 5. **자기지시 단어 X** — "이미지" / "그림" / "사진" / "차트" / "표" 같은 자기 메타 단어 사용 X (SEO 안티패턴, "차트"는 데이터 추이 묘사로 대체).
 6. **페이지 안 alt 중복 X** — 한 페이지 슬롯 N개의 alt 가 서로 달라야 함. orchestrator 가 페이지 단위 set 검사.
+7. **ASCII 기호만 (v1.9.1, 2026-05-19 e2e 후 추가)** — em dash, en dash, 화살표 (→ ← ↔), bullet (· •), 줄임표 (…), smart quotes, 「」『』 사용 X. 한글/영문/숫자/공백/쉼표(,)/마침표(.)/괄호(())/하이픈(-) 만 허용. **운영 안전** — 검수자가 caption 을 다른 CMS 로 옮길 때 깨짐 방지 + Google word separator 정상 분해. LLM 1차 차단 + `orchestrator._sanitize_alt()` 가 caption 박히기 전 deterministic 안전망 (em dash → 쉼표, 화살표 → 공백 등 치환 + 공백/구두점 collapse).
 
 ### 13.6 카드별 패턴 (6개 — `slot_selection.md` 출력 형식 섹션)
 

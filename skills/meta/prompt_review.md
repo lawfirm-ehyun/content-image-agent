@@ -35,6 +35,7 @@
 - [ ] **본문 통째 복붙 X** — 본문 문장이 alt 안에 5자 차이 이내로 그대로 들어가 있으면 fail (관계/추이/패턴 묘사로 재작성 권장). Levenshtein 정확 측정은 코드 단 추가 검토 — LLM 단에선 "본문 한 문장이 거의 그대로 들어갔는가" 직관 판단.
 - [ ] **사실 정확성** — alt 가 표현하는 내용이 카드 데이터/본문 안 사실로 합성된 것인가. 본문에 없는 인물/숫자/시간/장소 삽입 시 즉시 폐기.
 - [ ] **front-load 권장** — 핵심 명사가 앞쪽에 있는가. 서술문 prefix("다음 표는~", "본 차트는~")는 자동 `revised_data` 수정 시도.
+- [ ] **ASCII 기호만** — em dash (—), en dash (–), 화살표 (→ ← ↔), bullet (· •), 줄임표 (…), smart quotes 사용 X. 발견 시 `revised_data` 로 자동 수정 시도 (em dash → 쉼표, 화살표 → 공백/단어). 검수자가 caption 을 다른 CMS 로 옮길 때 깨짐 방지 + Google word separator 정상 분해.
 
 ## 변호사법 §23 컴플라이언스
 입력 데이터의 모든 문자열 필드(title, headers, rows, point_labels, footnote, source)에서 검사.

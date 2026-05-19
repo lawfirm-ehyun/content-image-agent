@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -89,6 +90,45 @@ class PageResult:
     cost_usd: float
     final_status: str
     slot_results: list[SlotResult]
+
+
+# v1.9 plan §13.5 #7 — ASCII 기호만 룰 deterministic 안전망.
+# LLM 룰 (slot_selection.md alt_text 룰 #7 + prompt_review.md) 이 1차 차단,
+# 본 함수가 caption 박히기 전 최종 sanitize. 검수자가 caption 을 다른 CMS 로
+# 복붙할 때 깨짐 방지 + Google word separator 정상 분해 보장.
+_ALT_CHAR_REPLACEMENTS: dict[str, str] = {
+    "—": ",",   # em dash —
+    "–": "-",   # en dash –
+    "…": "...", # ellipsis …
+    "·": " ",   # middle dot ·
+    "•": ",",   # bullet •
+    "→": " ",   # right arrow →
+    "←": " ",   # left arrow ←
+    "↔": " ",   # left-right arrow ↔
+    "⇒": " ",   # double right arrow ⇒
+    "「": "(",   # 「
+    "」": ")",   # 」
+    "『": "(",   # 『
+    "』": ")",   # 』
+    "“": '"',   # left double quote “
+    "”": '"',   # right double quote ”
+    "‘": "'",   # left single quote ‘
+    "’": "'",   # right single quote ’
+}
+
+
+def _sanitize_alt(text: str) -> str:
+    """alt_text 안 unicode 기호를 ASCII 등가로 치환 + 공백 정규화."""
+    if not text:
+        return text
+    out = text
+    for src, dst in _ALT_CHAR_REPLACEMENTS.items():
+        out = out.replace(src, dst)
+    # 공백/구두점 정리 — em dash 양쪽 공백 → ', ' 등 치환 잔재 흡수.
+    out = re.sub(r"\s+", " ", out)          # 다중 공백 collapse
+    out = re.sub(r"\s+,", ",", out)         # 쉼표 앞 공백 제거
+    out = re.sub(r"(,\s*)+", ", ", out)     # 중복 쉼표 → ', ' 1개
+    return out.strip(" ,")
 
 
 def _blocks_to_text(blocks: list[dict[str, Any]]) -> str:
@@ -454,7 +494,10 @@ async def _process_slot(
             review_passed = True
 
             # v1.9 plan §13 — caption-only alt_text 트랙. 80자 초과/빈값/페이지 중복 시 caption 생략.
-            alt_raw = (slot["extracted_data"].get("alt_text") or "").strip()
+            # §13.5 #7 ASCII 기호만 룰 — LLM 1차 차단 후 sanitize 가 최종 안전망.
+            alt_raw = _sanitize_alt(
+                (slot["extracted_data"].get("alt_text") or "").strip()
+            )
             alt_status: Literal["ok", "empty", "truncated", "duplicate"] = "ok"
             caption_to_send = ""
             if not alt_raw:
