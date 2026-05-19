@@ -1,7 +1,7 @@
 ---
 name: miniature_stock
 tone: 작은 미니어처 figure + 일상 사물 메타포 디오라마 / tilt-shift 매크로 photo
-use_when: 법률 추상 개념(계약·분쟁·합의·절차·파산·소송·채권·증거)을 일상 사물 메타포(서류·도장·동전·계약서·열쇠·균열 등)로 시각화 가능한 본문 — 인물 얼굴 환각 회피 + 무거운 법률 톤을 디오라마로 완화. 본문이 법원 외관·법정 풍경을 명시적으로 묘사하지 않는 한 korean_court_scene 보다 우선 검토.
+use_when: 법률 추상 개념(계약·분쟁·합의·절차·파산·소송·채권·증거)을 일상 사물 메타포(서류·도장·동전·계약서·열쇠·균열 등)로 시각화 가능한 본문 — 인물 얼굴 환각 회피 + 무거운 법률 톤을 디오라마로 완화. 본문이 법원 외관·법정 풍경을 명시적으로 묘사하지 않는 한 korean_court_scene 보다 우선 검토. **ai_visual 조건부 default — 다른 specific trigger (point_color_line 의 구체 인물 / korean_court_scene 의 법원 풍경 / cinematic_three_frame 의 시퀀스 / blueprint_poster 의 추상 구조) 안 걸리고 본문이 추상 법률 개념 서술 또는 인물 묘사 약한 사연이면 우선 채택.**
 aspect_ratio: 1536x1024
 text_rule: zero
 quality: medium

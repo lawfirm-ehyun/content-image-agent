@@ -539,6 +539,37 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 - 사용자 스타일 추가 절차 1회 dry-run 검증 (운영자가 md + 폴더 추가 → 다음 trigger 자동 인식)
 - 슬롯 3 cap 적용 (§14.5)
 
+**visual_style 매칭 사상 갱신 (v1.8.5-plan, 2026-05-19 사용자 컨펌)** — Phase 4.2 출범 사상 "매칭 실패 시 슬롯 폐기, 임의 default 금지"는 환각 가드로 유효하나 운영 분포에서 사용자 선호 스타일(`miniature_stock`) 비중이 의도보다 낮음. 5/19 사용자 평가로 "specific trigger 우선 + `miniature_stock` 조건부 default" 사상으로 재설계:
+
+1. **specific trigger 우선 (현행 유지 + 좁힘)**:
+   - `point_color_line`: **본문에 구체적 인물 묘사 (이름·직업·상황 명시) 가 있는 도입부 사연** (기존 "도입부 사연" 범위 좁힘)
+   - `korean_court_scene`: 본문에 법원 외관·복도·법정 풍경 명시 (v1.8 Phase 4.3 좁힘 유지)
+   - `cinematic_three_frame`: 본문에 인물 사연이 시간 흐름·감정 변화 시퀀스로 명시 (현행)
+   - `blueprint_poster`: 본문에 추상 구조·시스템·관계도 환기 필요 (정보형 부적합, 현행)
+
+2. **조건부 default (신설)** — `miniature_stock`: 본문이 추상 법률 개념(계약·분쟁·합의·절차·파산·소송·채권·증거) 서술 또는 의뢰인 사연이지만 인물 구체 묘사 약한 경우 → default 채택. 위 조건도 안 맞고 다른 specific 도 안 맞으면 → 슬롯 폐기 (현행 환각 가드 유지).
+
+**Net effect (frequency 의도)**: `miniature > line > court > cinematic ≈ blueprint`. 폐기율 ↓ (조건부 default 가 약한 매칭 흡수) + ai_visual 슬롯 빈도 ↑. **환각 가드**: 무조건 default X — "추상 법률 개념 / 약한 사연" 게이트가 부적합 본문(순수 통계·정보)에 miniature 강제 방지.
+
+**LLM 신호 path 동기화 (두 path 같은 message 필수)** — analyze prompt system_prompt 에 둘 다 inject 됨:
+- `skills/meta/slot_selection.md` "visual_style 선택 룰" — ranking 숫자 표 X (LLM 이 frequency 로 오독), "default + specific trigger" 자연어 사상으로 재설계
+- `skills/visual_styles/*.md` frontmatter `use_when` — `_format_visual_styles_table()` 자동 inject 표:
+  - `miniature_stock` use_when 끝에 "**ai_visual default — 다른 specific trigger 안 걸리고 추상 법률 개념 본문이면 우선 채택**" 추가
+  - `point_color_line` use_when "도입부 사용자 사연·상황 묘사 (H2 첫 단락 인물 등장)" → "**본문에 구체적 인물 묘사 (이름·직업·상황 명시) 가 있는 도입부 사연**"
+  - 나머지 3종: 현행 점검 후 미세 조정만
+
+**검증 path (적용 후 첫 5-10페이지)**:
+- 노션 로그 DB `타입=ai_visual` row 의 `visual_style` 분포 측정
+- 목표 분포: miniature 50-60% / line 20-30% / court 5-10% / cinematic 5% / blueprint 5%
+- ai_visual 폐기율 5% 미만 → 환각 위험 ↑ 시그널 → default 게이트 좁힘 재고
+
+**관련 코드 변경 (후속 작업, 본 plan patch = 변경 0)**:
+- `skills/meta/slot_selection.md` v1.8 → v1.8.5 갱신 (visual_style 선택 룰 재설계)
+- `skills/visual_styles/miniature_stock.md` + `point_color_line.md` frontmatter `use_when` 갱신
+- `docs/visual_styles_library_v1.md` §1.4 매칭 룰 + §2.1/2.2 use_when 동기화 (drift 해소 — skills 가 docs 보다 진화한 상태)
+- `tools/llm/analyze_content.py` `_format_visual_styles_table()` 코드 변경 0 (frontmatter 자동 inject path 그대로)
+- 매칭 로직 / 코드 분기 변경 0 — 사상은 LLM prompt 단의 use_when + slot_selection 룰로만 표현
+
 ### 14.4 Phase 4.3 — vision OCR 텍스트 환각 검증 (3-5일)
 
 **범위 (MVP 단순화, 2026-05-18 사용자 컨펌)**: §19.16 (plan_history) paper-only → 실구현 격상. AI 카드 산출물을 vision LLM 이 평가 — **text_rule=zero 단일 분기**:

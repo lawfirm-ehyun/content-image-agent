@@ -53,7 +53,7 @@ prompt_template: |
 
 > `prompt_template` 은 frontmatter 가 아니라 본문 fenced 영역에 둠 (multiline + Korean 자연어 가독성).
 
-### 1.4 LLM 매칭 룰 (Phase 4.2 Do 단계 코드 작업)
+### 1.4 LLM 매칭 룰 (Phase 4.2 Do 단계 코드 작업, v1.8.5 갱신 — 조건부 default 사상)
 
 `tools/llm/analyze_content.py` 가 감성형 슬롯 trigger 시:
 1. `skills/visual_styles/*.md` 모두 load → frontmatter `name` / `tone` / `use_when` 만 추출해 슬림 표 합성
@@ -61,7 +61,13 @@ prompt_template: |
 3. 결과: `extracted_data.visual_style = <name>` + `scene` / `mood` / `accent_target` 합성
 4. `ai_render.render_ai_card` 가 `card_type="ai_visual"` 분기 → `visual_style` 보고 `skills/visual_styles/<name>.md` load → `prompt_template` placeholder 치환 → gpt-image 호출
 
-매칭 실패 (LLM 이 None 반환) → 슬롯 폐기. 임의 default fallback X (환각 방지).
+**매칭 결정 사상 (v1.8.5, 2026-05-19 사용자 컨펌 — plan §14.3 visual_style 매칭 사상 갱신)**:
+
+- **specific trigger 우선**: `point_color_line` (구체 인물 묘사 명시) / `korean_court_scene` (법원 풍경 명시) / `cinematic_three_frame` (시간 흐름 시퀀스 명시) / `blueprint_poster` (추상 구조 환기) — use_when 패턴과 본문 명확 매칭 시 우선 채택
+- **조건부 default — `miniature_stock`**: 본문이 추상 법률 개념(계약·분쟁·합의·절차·파산·소송·채권·증거) 서술 또는 의뢰인 사연이지만 인물 구체 묘사 약함 → default 채택
+- **조건도 안 맞고 다른 specific 도 안 맞음 → 슬롯 폐기** (환각 가드 유지). 무조건 default X — "추상 법률 개념 / 약한 사연" 게이트가 부적합 본문(순수 통계·정보) 강제 진입 차단.
+
+이전 v1.8 사상 "매칭 실패 → 슬롯 폐기, 임의 default fallback X" → v1.8.5 에서 `miniature_stock` 만 조건부 default 로 격상. 환각 가드는 추상 법률 개념 게이트로 대체.
 
 ---
 
@@ -73,7 +79,7 @@ prompt_template: |
 ---
 name: point_color_line
 tone: 단색 검정 라인 + wine-magenta accent 1포인트
-use_when: 도입부 사용자 사연·상황 묘사 (H2 첫 단락 인물 등장) / 콘텐츠 전환부 호흡 분기
+use_when: 본문에 구체적 인물 묘사 (이름·직업·상황 명시, 예 "30대 직장인 A씨가 야간 도로에서 음주측정") 가 있는 도입부 사연 / 콘텐츠 전환부 호흡 분기. 인물 묘사 약한 추상 법률 개념은 miniature_stock 조건부 default 로.
 aspect_ratio: 1536x1024
 text_rule: zero
 quality: medium
@@ -81,6 +87,8 @@ reference_dir: reference_library/visual_styles/point_color_line/
 accent_target_default: 인물 의류 또는 손에 든 서류
 ---
 ```
+
+> v1.8.5 (2026-05-19) — use_when 좁힘: 구체적 인물 묘사 명시 필요. 약한 사연·추상 법률 개념은 `miniature_stock` 조건부 default 로 흐르도록 가드.
 
 **prompt_template**:
 ```
@@ -106,8 +114,8 @@ v1.6.4 운영에서 토스피드 톤과 가장 잘 어울리던 라인. 정보�
 ```markdown
 ---
 name: miniature_stock
-tone: 작은 인물·소품 미니어처 사진 톤 / 한국 일상 맥락
-use_when: 추상 개념을 사물·소품으로 비유 가능한 본문 (계약 / 합의 / 분쟁 등) / 사람 얼굴 직접 노출 회피하고 싶은 사연
+tone: 작은 미니어처 figure + 일상 사물 메타포 디오라마 / tilt-shift 매크로 photo
+use_when: 법률 추상 개념(계약·분쟁·합의·절차·파산·소송·채권·증거)을 일상 사물 메타포(서류·도장·동전·계약서·열쇠·균열 등)로 시각화 가능한 본문 — 인물 얼굴 환각 회피 + 무거운 법률 톤을 디오라마로 완화. 본문이 법원 외관·법정 풍경을 명시적으로 묘사하지 않는 한 korean_court_scene 보다 우선 검토. **ai_visual 조건부 default — 다른 specific trigger (point_color_line 의 구체 인물 / korean_court_scene 의 법원 풍경 / cinematic_three_frame 의 시퀀스 / blueprint_poster 의 추상 구조) 안 걸리고 본문이 추상 법률 개념 서술 또는 인물 묘사 약한 사연이면 우선 채택.**
 aspect_ratio: 1536x1024
 text_rule: zero
 quality: medium
@@ -115,20 +123,25 @@ reference_dir: reference_library/visual_styles/miniature_stock/
 ---
 ```
 
+> v1.8 Phase 4.3 (2026-05-18) — 사용자 reference 기반 재정의 (tilt-shift 사진 → 메타포 사물 디오라마). v1.8.5 (2026-05-19) — ai_visual 조건부 default 격상 (§1.4 매칭 룰 참조).
+
 **prompt_template**:
 ```
-Tilt-shift miniature photography of {scene}.
-Small figures (under 5 cm scale feel), shallow depth of field, soft natural lighting,
-warm neutral light gray background or out-of-focus Korean urban setting.
+Tilt-shift macro photography of small miniature figures (about 1:64 to 1:87 scale)
+acting out {scene} on top of everyday objects rescaled as the landscape.
+Choose an object that metaphorically represents the abstract legal concept in {scene}
+(documents, contracts, coins, biscuits, cracked concrete, folders, keys, stamps —
+whichever fits the scene's metaphor).
+Shallow depth of field, soft natural lighting, light gray or out-of-focus neutral background.
 Mood: {mood}.
-Restrained color palette — desaturated tones with a single wine-magenta accent
-on {accent_target} (a hat / a folder / a small object).
+Natural figure colors are allowed (helmets, vests, clothing), with a single
+wine-magenta accent on {accent_target} as the focal element.
 No human faces in close-up. No visible text, signs, letters, numbers, or readable labels.
-Editorial calm, Toss-feed soft minimalism, slightly cinematic light.
+Editorial documentary photo, Toss-feed soft minimalism, slightly cinematic light.
 ```
 
 **Why this style?**
-얼굴 환각 / 한국 외 맥락 환각을 사물 스케일로 회피. 계약·분쟁 같은 추상 개념을 비유로 풀기 좋음.
+얼굴 환각 / 한국 외 맥락 환각을 사물 스케일로 회피. 계약·분쟁 같은 추상 법률 개념을 일상 사물 메타포로 풀기 좋음. 법률 도메인 1차 감성형 (default).
 
 ---
 
@@ -138,13 +151,15 @@ Editorial calm, Toss-feed soft minimalism, slightly cinematic light.
 ---
 name: korean_court_scene
 tone: 한국 법원 외관·복도·법정 풍경 사진 / 차분한 다큐멘터리 톤
-use_when: 소송·재판 절차 콘텐츠 / "법원에 갔다" "변호사가 출석했다" 같은 본문 / 법적 상황의 무게감 환기
+use_when: 본문이 법원 외관·복도·법정 풍경을 명시적으로 묘사할 때 한정 (예 — "OO법원에 출석", "법정에서 다투다", "판사가 법정에서 선고", "법원 앞에서 만나"). 단순 법적 무게감 환기·소송 절차 일반은 miniature_stock 디오라마 메타포가 우선 후보.
 aspect_ratio: 1536x1024
 text_rule: zero
 quality: medium
 reference_dir: reference_library/visual_styles/korean_court_scene/
 ---
 ```
+
+> v1.8 Phase 4.3 (2026-05-18) — use_when 좁힘: 법률 도메인 default 지위 박탈, 본문이 법원 풍경을 명시적으로 묘사할 때만 trigger.
 
 **prompt_template**:
 ```

@@ -1,7 +1,7 @@
 ---
 name: point_color_line
 tone: 단색 검정 라인 + wine-magenta accent 1포인트
-use_when: 도입부 사용자 사연·상황 묘사 (H2 첫 단락 인물 등장) / 콘텐츠 전환부 호흡 분기
+use_when: 본문에 구체적 인물 묘사 (이름·직업·상황 명시, 예 "30대 직장인 A씨가 야간 도로에서 음주측정") 가 있는 도입부 사연 / 콘텐츠 전환부 호흡 분기. 인물 묘사 약한 추상 법률 개념은 miniature_stock 조건부 default 로.
 aspect_ratio: 1536x1024
 text_rule: zero
 quality: medium

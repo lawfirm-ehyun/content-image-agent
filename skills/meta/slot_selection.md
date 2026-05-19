@@ -1,4 +1,4 @@
-# Slot Selection (v1.8 Phase 4.2)
+# Slot Selection (v1.8.5 Phase 4.2)
 
 본문 블록을 분석해서 페이지 전체에 어떤 image_type 슬롯을 어디에 넣을지 결정한다.
 0개도 OK이지만 이현 콘텐츠는 보통 2000자+이라 0개 결정은 거의 없을 것.
@@ -102,19 +102,21 @@ extracted_data:
 
 ---
 
-## 감성형 결정 룰 (v1.8 갱신)
+## 감성형 결정 룰 (v1.8.5 갱신 — visual_style 매칭 사상 재설계)
 
-### `ai_visual` — 5 visual_style 라이브러리 (v1.8 Phase 4.2 신설)
+### `ai_visual` — 5 visual_style 라이브러리 (v1.8 Phase 4.2 신설, v1.8.5 매칭 사상 갱신)
 
-`skills/visual_styles/*.md` frontmatter (analyze prompt에 슬림 표로 inject) 의 `use_when` 패턴과 본문이 명확히 매칭될 때 후보. 매칭 안 되면 슬롯 폐기 (임의 default 금지).
+`skills/visual_styles/*.md` frontmatter (analyze prompt에 슬림 표로 inject) 의 `use_when` 을 본문 H2 첫 단락 + 도입부 톤 과 매칭해 visual_style 1개 결정. 매칭 결정 사상은 **default + specific trigger** — 우선순위 숫자 / 분포 표 X (frequency 오독 방지).
 
-**visual_style 선택 룰**:
-- 본문 H2 첫 단락 + 도입부 톤 분석 → 표의 `use_when` 패턴 중 best fit 1개 결정
-- `point_color_line`: 도입부 사용자 사연 / 콘텐츠 전환부 (기존 illustration 흡수, default)
-- `miniature_stock`: 추상 개념 사물 비유 가능 (계약/합의/분쟁) / 얼굴 노출 회피
-- `korean_court_scene`: 소송·재판 절차 / 법원 출석·변호사 등장 / 법적 무게감 환기
-- `blueprint_poster`: 추상 구조·시스템·관계도 환기 (정보형 timeline/simple_table 부적합)
-- `cinematic_three_frame`: 인물 사연이 짧은 시퀀스 (시간 흐름·감정 변화) 로 풀리는 경우 — 2:3 portrait, quality=high (실비 ↑)
+**visual_style 매칭 사상 — default + specific trigger (v1.8.5, 2026-05-19 사용자 컨펌)**:
+
+- **조건부 default — `miniature_stock`**: 본문이 추상 법률 개념(계약·분쟁·합의·절차·파산·소송·채권·증거) 서술 또는 의뢰인 사연이지만 인물 구체 묘사 약한 경우 → 우선 채택. 일상 사물 메타포 디오라마 — 얼굴 환각 회피 + 무거운 법률 톤 완화.
+- **specific trigger (매칭 시 default 덮어쓰기)**:
+  - `point_color_line`: 본문에 **구체적 인물 묘사 (이름·직업·상황 명시, 예 "30대 직장인 A씨가 야간 도로에서 음주측정") 가 있는 도입부 사연** / 콘텐츠 전환부 호흡 분기. 인물 묘사 약한 추상 법률 개념은 default 로 흐름.
+  - `korean_court_scene`: 본문이 **법원 외관·복도·법정 풍경을 명시적으로 묘사**할 때 한정 ("OO법원에 출석", "법정에서 다투다", "판사가 법정에서 선고" 등). 단순 법적 무게감 환기·소송 절차 일반은 default.
+  - `cinematic_three_frame`: 본문에 인물 사연이 **시간 흐름·감정 변화 시퀀스**로 풀리는 경우 — 2:3 portrait, quality=high (실비 ↑).
+  - `blueprint_poster`: 본문에 **추상 구조·시스템·관계도 환기** 필요 (정보형 timeline / simple_table 로 풀기 부적합한 추상도).
+- **매칭 불가 → 슬롯 폐기 (환각 가드 유지)**: default 게이트(추상 법률 개념 / 약한 사연) 도 안 맞고 다른 specific 도 안 맞으면 슬롯 폐기. 무조건 default X — 부적합 본문(순수 통계·정보·데이터) 강제 진입 차단.
 
 **금지 케이스**:
 - 본문에 사연/장면/구조/대화·인물 시퀀스 묘사 없음 → ai_visual trigger X (환각 방지)
