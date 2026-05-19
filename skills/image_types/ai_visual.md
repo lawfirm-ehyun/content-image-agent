@@ -28,7 +28,7 @@ runtime SOT는 `skills/visual_styles/<name>.md` frontmatter + body `prompt_templ
 - `scene` (str, 필수): 장면 묘사 자연어. 본문 사실 안에서 합성 (라벨링·재표현 OK, 환각 X).
 - `mood` (str, 필수): 분위기 키워드. "당혹스러움" / "긴장" / "고민" / "체계적" 등.
 - `accent_target` (str, 옵션): wine-magenta 강조 요소 자연어. 비우면 frontmatter `accent_target_default` 또는 fallback.
-- `alt_text` (str): 노션 이미지 alt. 한국어 1-2줄. 본문에서 합성.
+- `alt_text` (str, 필수): 노션 image caption 으로 박혀 인간 검수자가 발행 시 alt 시드로 사용. **한국어 80자 이하** (v1.9 plan §13). SEO 룰 6개 + 카드별 패턴은 `skills/meta/slot_selection.md` "alt_text 룰" 섹션 참조. ai_visual 패턴: scene 본문 합성 + target keyword 1회.
 - `footnote` (str, 옵션)
 
 ## Data validation (사실 정확성 절대 룰 #1 — 카테고리 차등)

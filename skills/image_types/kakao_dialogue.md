@@ -23,6 +23,7 @@ AI (gpt-image thinking, quality=high) — ~$0.25/장 @ 1024x1536. 텍스트 정�
   - `time` (옵션): "오전 9:10" 형식
 - `source` (str, 옵션): "본 사연은 실제 의뢰인 사연을 각색했습니다" 등
 - `footnote` (str, 옵션)
+- `alt_text` (str, 필수): 노션 image caption SEO 추천문. 한국어 80자 이하. 패턴: "[주제] 의뢰인-변호사 상담 발췌". 룰은 `skills/meta/slot_selection.md` "alt_text 룰" 참조. (v1.9 plan §13)
 
 ## Data validation (CRITICAL — 사실 정확성 절대 룰 #1)
 - **messages[i].text는 본문 1자도 변경 X** — AI 환각 절대 금지.

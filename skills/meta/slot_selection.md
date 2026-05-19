@@ -229,6 +229,41 @@ extracted_data:
 - **본문에 없는 사실/숫자는 절대 추가 X.**
 - **쉼표/짧은 절 분할** 활용 — 한 cell 안에서 콤마로 두 호흡 (각 7-9자) 권장
 
+### alt_text 룰 (v1.9 SEO + a11y, plan §13) — 7종 카드 전체 필수
+
+**`extracted_data.alt_text` 는 7종 카드 모두 필수.** Notion image caption 으로 박혀 인간 검수자가 발행 시 alt 속성 시드로 사용. 검수자가 그대로 옮기거나 다듬어 쓸 수 있는 **SEO 최적화 추천문 1줄**.
+
+**입력**: analyze prompt 에 `PAGE TITLE: {page_title}` 명시 전달 (orchestrator 가 Notion page title property 추출 → analyze_content / review_input 모두 전달).
+
+**SEO 생성 룰 (6개)**:
+1. **한국어 80자 이하** (한국어 정보 밀도 ↑ — 영문 SEO 125자 ≈ 한국어 60-80자). 초과 시 caption 생략 또는 슬롯 폐기.
+2. **Front-load 키워드** — 핵심 명사를 앞에 배치. 서술문 prefix 지양 ("다음 표는 ~을 정리한" / "본 차트는 ~" X).
+3. **페이지 target keyword 1회 자연스럽게 포함** — `PAGE TITLE` 의 핵심 명사 1회 alt 에 흘리기. **stuffing(2회+) 금지**.
+4. **본문 단순 반복 X** — 카드 안 텍스트나 본문 문장 통째 복붙 X. 카드가 표현하는 *관계 / 추이 / 패턴 / 주제* 묘사.
+5. **자기지시 단어 X** — "이미지" / "그림" / "사진" / "차트" / "표" 같은 메타 단어 사용 X (SEO 안티패턴). "차트" 는 데이터 추이 묘사로, "표" 는 주제 묘사로 대체.
+6. **페이지 안 alt 중복 X** — 한 페이지 슬롯 N개의 alt 가 서로 달라야 함 (orchestrator 가 페이지 단위 set 검사).
+
+**카드별 패턴 (6개 — 예시)**:
+
+| 카드 | 패턴 | 예시 |
+|---|---|---|
+| `chart` (line/bar) | "[주제] [기간] 추이 — [시작값]에서 [끝값]로 [방향]" | "이혼소송 접수 2021-2024 추이, 2.9만→3.4만 증가" |
+| `chart` (donut/pie) | "[주제] [N]개 [축] 구성비 — [핵심 slice] 최대" | "사건 유형별 구성비 4개, 임대차 최다" |
+| `simple_table` / `comparison_table` | "[주제] [N]가지 [축]" | "세입자 권리 4가지 핵심 정리" / "협의·재판 이혼 절차 비교" |
+| `key_points_card` | "[주제] 핵심 [N]가지" | "음주운전 면허정지 대응 핵심 3가지" |
+| `timeline` | "[주제] [N]단계 절차" | "상속 분쟁 조정 5단계 절차" |
+| `kakao_dialogue` | "[주제] 의뢰인-변호사 상담 발췌" | "음주측정 0.08 면허정지 상담 발췌" |
+| `ai_visual` | scene 본문 합성 (기존 룰) | "야간 도로변 음주측정 직장인 사연" |
+
+**사실 정확성** (절대 룰 #1, 라벨링 영역): 카드 데이터·본문 안 사실 안에서 합성 OK. 본문에 없는 사실/숫자/주체 X. review.py 가 사실 일치 + 길이 + target keyword + 자기지시 + 본문 통째 복붙 검사.
+
+**§23 컴플라이언스**: `tools/compliance/keywords.py` regex pass 가 `_collect_strings` 재귀로 alt_text 자동 흡수. 위반 시 슬롯 폐기.
+
+**빈값 / 초과 정책**:
+- LLM 미생성 / 80자 초과 / 검사 실패 → caption 생략 (alt_text 빈 문자열로 박힘), 슬롯은 살림.
+- orchestrator 가 `alt_text_status: "ok" | "empty" | "truncated"` 로 log_metadata 에 기록.
+- 1주 운영 후 empty 비율 ≥ 10% 면 슬롯 폐기 정책 전환 (plan §13.10).
+
 ### 출력 예시
 
 ```yaml
@@ -241,7 +276,7 @@ image_slots:
       scene: "야간 공원에서 음주측정 받는 30대 직장인"
       mood: "당혹스러움"
       accent_target: "직장인의 셔츠 칼라"
-      alt_text: "음주운전 적발 후 망연자실한 모습"
+      alt_text: "음주운전 적발 직장인 사연 — 측정 후 망연자실"
 
   # chart (정보형, 시계열)
   - type: chart
@@ -254,6 +289,7 @@ image_slots:
       point_labels: ["28,988건", "29,258건", "24,252건", "33,581건"]
       y_unit: "(건)"
       source: "출처: 경찰청"
+      alt_text: "사이버명예훼손 2021-2024 추이, 2.9만→3.4만 증가"
 
   # simple_table (정보형)
   - type: simple_table
@@ -265,6 +301,7 @@ image_slots:
         - ["대항력", "집이 팔려도 쫓겨나지 않을 권리"]
         - ["우선변제권", "경매에서 다른 채권자보다 먼저 보증금 회수"]
       highlight_first_col: true
+      alt_text: "세입자 권리 4가지 — 대항력·우선변제권 등 핵심"
 
   # kakao_dialogue (감성형, 대화)
   - type: kakao_dialogue
@@ -279,6 +316,7 @@ image_slots:
           text: "0.08은 면허 정지 구간입니다. 우선 진술서 작성 전에 상담부터 받으시는 게 좋습니다."
           time: "오전 9:12"
       source: "본 사연은 실제 의뢰인 사연을 각색했습니다"
+      alt_text: "음주측정 0.08 면허정지 의뢰인-변호사 상담 발췌"
 ```
 
 ---

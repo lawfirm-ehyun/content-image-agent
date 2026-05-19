@@ -31,6 +31,7 @@ default — `width: 1200px` 고정, `height: auto`.
 - `y_min` / `y_max` : float | None
 - `orientation` : `'vertical'`(default) | `'horizontal'` — Week 3b parametric.
 - `emphasis_index` : int | None (default None) — 강조할 포인트/막대 인덱스. None이면 강조 X.
+- `alt_text` : str — **필수**. 노션 image caption SEO 추천문. 한국어 80자 이하. line/bar 패턴: "[주제] [기간] 추이 — [시작값]에서 [끝값]로 [방향]". donut/pie 패턴: "[주제] [N]개 [축] 구성비 — [핵심 slice] 최대". 룰은 `skills/meta/slot_selection.md` "alt_text 룰" 참조. (v1.9 plan §13)
 
 ### line vs bar 선택
 - **line**: 본문에 연속된 시계열 (연도/월/분기 → 값). x축이 순서 의미 있음.

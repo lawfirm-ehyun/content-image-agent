@@ -30,6 +30,7 @@ default — width 1200px, height auto. 단계 4-6개 기준 ~900-1300px.
   - `duration` : str | None — 소요 기간 ("1-2주", "30일 이내", "약 2개월"). label 옆 inline 표시.
   - `icon` : str | None — Lucide icon 이름 (예: "file-text", "gavel"). None이면 단계 번호 표시.
 - `footnote` : str | None — 출처/주석.
+- `alt_text` : str — **필수**. 노션 image caption SEO 추천문. 한국어 80자 이하. 패턴: "[주제] [N]단계 절차". 룰은 `skills/meta/slot_selection.md` "alt_text 룰" 참조. (v1.9 plan §13)
 
 ## Lucide icon 추천 (법률 절차)
 - 서류/제출: `file-text`, `file-pen-line`, `file-search`, `file-check`, `send`, `mail`

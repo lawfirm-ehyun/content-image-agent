@@ -77,11 +77,17 @@ def _compress_for_analyze(compacted: list[dict[str, Any]]) -> list[dict[str, Any
     return out
 
 
-async def analyze_content(blocks: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], float]:
+async def analyze_content(
+    blocks: list[dict[str, Any]],
+    page_title: str = "",
+) -> tuple[list[dict[str, Any]], float]:
     """Notion blocks 리스트 → (image_slots, cost_usd).
 
     image_slots 각 항목 스키마 (slot_selection.md 출력):
-        type, sub_type?, position_after_block_id, extracted_data
+        type, sub_type?, position_after_block_id, extracted_data (alt_text 포함)
+
+    page_title: Notion page title property 값. v1.9 plan §13 — alt_text 의 target keyword source.
+                비우면 prompt 에서 명시 X (alt_text 생성은 가능하나 키워드 일관성 ↓).
 
     blocks는 compact 형태(id/type/text)로 변환해 inject — raw JSON은 80KB+ 가능,
     SDK stdin 한계(22KB) 초과로 exit 1 발생. §19.8 — compact가 한계 초과면 압축 모드 fallback.
@@ -101,7 +107,16 @@ async def analyze_content(blocks: list[dict[str, Any]]) -> tuple[list[dict[str, 
         blocks_compact = json.dumps(compacted, ensure_ascii=False, separators=(",", ":"))
         logger.warning("압축 후 %d chars (%d 블록)", len(blocks_compact), len(compacted))
 
+    page_title_block = (
+        f"PAGE TITLE: {page_title}\n"
+        "→ 모든 슬롯의 alt_text 에 이 제목의 핵심 명사 1회 자연스럽게 포함 "
+        "(stuffing 2회+ 금지, 본문에 없는 사실 추가 X).\n\n"
+        if page_title.strip()
+        else ""
+    )
+
     user_prompt = (
+        f"{page_title_block}"
         "다음은 Notion 페이지의 모든 block(JSON 배열)이다. "
         "본 스킬 룰에 따라 image_slots를 결정하고 JSON 객체로 반환하라.\n\n"
         f"BLOCKS:\n{blocks_compact}\n\n"

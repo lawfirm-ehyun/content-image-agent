@@ -22,6 +22,21 @@ def norm_uuid(uuid: str | None) -> str:
     return (uuid or "").replace("-", "").lower()
 
 
+def extract_page_title(page: dict) -> str:
+    """Notion page dict → title plain_text 문자열.
+
+    Notion page properties 중 type='title' 항목의 rich_text를 합쳐 반환.
+    DB마다 title property 이름이 다를 수 있어 type 매칭으로 찾음.
+    title 없으면 빈 문자열 반환 (plan §13 — alt_text target keyword source).
+    """
+    props = page.get("properties") or {}
+    for prop in props.values():
+        if prop.get("type") == "title":
+            rich = prop.get("title") or []
+            return "".join(span.get("plain_text", "") for span in rich).strip()
+    return ""
+
+
 @lru_cache(maxsize=1)
 def get_client() -> Client:
     """싱글톤 Client. 첫 호출 시 NOTION_TOKEN 검증."""

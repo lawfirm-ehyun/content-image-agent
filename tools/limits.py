@@ -31,6 +31,10 @@ OPENAI_RETRY_MAX_WAIT_S: Final[float] = 60.0      # 신설 — thinking 모델 �
 MAX_USER_PROMPT_CHARS: Final[int] = 20_000        # Windows argv 한계
 MAX_BLOCKS_PROMPT_CHARS: Final[int] = 18_000      # analyze 압축 진입 임계값 (§19.8)
 
+# === SEO / a11y (v1.9 plan §13 — alt_text caption track) ===
+# 한국어 정보 밀도 ↑ — 영문 SEO 권장 125자 ≈ 한국어 60-80자. 80자 초과 시 caption 생략 + 슬롯 살림.
+ALT_TEXT_MAX_CHARS: Final[int] = 80
+
 # === timeouts ===
 QUERY_JSON_TIMEOUT_S: Final[int] = 360
 PLAYWRIGHT_FONT_TIMEOUT_MS: Final[int] = 5000
