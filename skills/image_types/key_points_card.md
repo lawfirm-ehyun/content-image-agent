@@ -29,6 +29,7 @@ default — width 1200px, height auto. 항목 3-5개 기준 ~600-900px.
   - `label` : str — **필수**. 핵심 포인트 제목 (한 줄, 짧게).
   - `description` : str | None — 한 줄 설명 (옵션).
 - `footnote` : str | None — 출처/주석.
+- `alt_text` : str — **필수**. 노션 image caption SEO 추천문. 한국어 80자 이하. 패턴: "[주제] 핵심 [N]가지". 룰은 `skills/meta/slot_selection.md` "alt_text 룰" 참조. (v1.9 plan §13)
 
 > plan §7.5 v1.0의 `variant: numbered | checked | bulleted` 3종은 v1.4에서 단일 패턴(numbered)으로 통일.
 > 이유: (1) checked variant는 accent.success 색이 brand 외 컬러 추가 → 토스피드 단색 강조 톤 위반.

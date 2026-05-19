@@ -24,7 +24,7 @@ AI (gpt-image instant, quality=medium) — ~$0.042/장 @ 1024x1024.
   - 예: "야간 공원에서 음주측정 받는 30대 직장인", "거실에서 형제 둘이 유산 서류 보며 다투는 모습"
 - `mood` (str, 필수): 분위기 키워드. "당혹스러움" / "고민" / "안도" / "긴장" 등.
 - `accent_target` (str, 옵션): wine-magenta로 강조할 1-2 요소. 예: "셔츠 칼라", "서류 표지".
-- `alt_text` (str): 노션 이미지 alt. 한국어 1-2줄, 본문에서 합성.
+- `alt_text` (str, 필수): 노션 image caption 으로 박혀 인간 검수자가 발행 시 alt 시드로 사용. **한국어 80자 이하** (v1.9 plan §13). 룰은 `skills/meta/slot_selection.md` "alt_text 룰" 섹션 참조.
 - `footnote` (str, 옵션)
 
 ## Data validation (사실 정확성 절대 룰 #1 — 카테고리 차등)

@@ -19,6 +19,7 @@ default — width 1200px 고정, height auto. 행 4-6개 기준 ~700-900px.
 - `column_headers` : list[str] — **첫 항목은 label 컬럼명** (보통 "항목"/"구분"), 그 뒤 비교 대상 N개. 길이 2-4 권장 (label + 비교 1-3).
 - `rows` : list[{label: str, values: list[str]}] — `values` 길이 = `len(column_headers) - 1`.
 - `footnote` : str | None — 출처 또는 보충 설명.
+- `alt_text` : str — **필수**. 노션 image caption SEO 추천문. 한국어 80자 이하. 패턴: "[비교 주제 A·B] [N]가지 [축] 비교". 룰은 `skills/meta/slot_selection.md` "alt_text 룰" 참조. (v1.9 plan §13)
 
 > **highlight_column_index 제거 (v1.4)**: 한 컬럼을 시각적으로 띄우면 "이게 더 좋다"는 광고성 신호로 읽혀 §23 위반 경계. 모든 비교 컬럼은 동등 표시. 구조적 명료성(외곽 보더 + 세로 보더 + 헤더 톤 차별화)로 가독성 확보.
 

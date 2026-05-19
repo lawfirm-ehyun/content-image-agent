@@ -19,6 +19,7 @@ default — `width: 1200px` 고정, `height: auto`.
 - `rows` : list[list[str]]
 - `footnote` : str | None
 - `highlight_first_col` : bool (기본 False, 좌측 키 컬럼 회색 강조 시 True)
+- `alt_text` : str — **필수**. 노션 image caption SEO 추천문. 한국어 80자 이하. 패턴: "[주제] [N]가지 [축]". 룰은 `skills/meta/slot_selection.md` "alt_text 룰" 참조. (v1.9 plan §13)
 
 ## Style (`templates/simple_table.html` 참조)
 - 헤더: neutral.100 배경 + neutral.500 텍스트, 30px medium

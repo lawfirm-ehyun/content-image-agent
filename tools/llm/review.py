@@ -30,17 +30,20 @@ async def review_input(
     slot_type: str,
     slot_data: dict[str, Any],
     page_text: str,
+    page_title: str = "",
 ) -> tuple[dict[str, Any], float]:
     """슬롯 input 데이터 검토. ({passed, issues, revised_data?}, cost_usd) 튜플 반환.
 
     slot_type   : "simple_table" | "chart"
-    slot_data   : extracted_data dict (template variables)
+    slot_data   : extracted_data dict (template variables, alt_text 포함)
     page_text   : 본문 일치 검증을 위한 원문 (본문 모든 텍스트를 한 문자열로 연결한 것)
+    page_title  : Notion page title — v1.9 plan §13. alt_text 의 target keyword 일치 검증 source.
 
     plan §19.7 — 1차 regex pass로 §23 명시 키워드 위반 즉시 폐기 (LLM 호출 절약).
     위반 발견 시 (parsed=passed:False + issues, cost=0.0) 반환 — LLM 호출 X.
     """
     # 1차 regex pass — slot_data 안 모든 string leaf 합쳐 §23 키워드 검사.
+    # alt_text 도 _collect_strings 재귀로 자동 흡수 (v1.9 plan §13.4).
     slot_text = "\n".join(_collect_strings(slot_data))
     violations = check_keywords(slot_text)
     if violations:
@@ -56,8 +59,15 @@ async def review_input(
     skill = load_skill("meta/prompt_review.md")
     image_type_skill = load_skill(f"image_types/{slot_type}.md")
 
+    page_title_block = (
+        f"## 페이지 target keyword (alt_text 검증 기준)\n{page_title}\n\n"
+        if page_title.strip()
+        else ""
+    )
+
     user_prompt = (
         f"## 슬롯 타입\n{slot_type}\n\n"
+        f"{page_title_block}"
         f"## 추출된 데이터 (검토 대상)\n{json.dumps(slot_data, ensure_ascii=False, indent=2)}\n\n"
         f"## 본문 원문 (일치 검증 기준)\n{page_text}\n\n"
         '응답 스키마: {"passed": bool, "issues": [string], '

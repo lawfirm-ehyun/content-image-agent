@@ -17,6 +17,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 import tempfile
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from jinja2 import UndefinedError as JinjaUndefinedError
 from tools.budget import RunBudget
 from tools.image.webp_converter import png_to_webp
 from tools.limits import (
+    ALT_TEXT_MAX_CHARS,
     PER_PAGE_CAP_USD,
     PER_RUN_CAP_USD,
     PER_SLOT_ATTEMPTS,
@@ -39,7 +41,7 @@ from tools.llm._common import compact_blocks
 from tools.llm.analyze_content import analyze_content
 from tools.llm.image_review import review_image
 from tools.llm.review import review_input
-from tools.notion import get_client, norm_uuid
+from tools.notion import extract_page_title, get_client, norm_uuid
 from tools.notion.fetch_pages import fetch_pages_by_status
 from tools.notion.get_page_content import get_page_blocks
 from tools.notion.insert_image_block import insert_image_block
@@ -88,6 +90,45 @@ class PageResult:
     cost_usd: float
     final_status: str
     slot_results: list[SlotResult]
+
+
+# v1.9 plan §13.5 #7 — ASCII 기호만 룰 deterministic 안전망.
+# LLM 룰 (slot_selection.md alt_text 룰 #7 + prompt_review.md) 이 1차 차단,
+# 본 함수가 caption 박히기 전 최종 sanitize. 검수자가 caption 을 다른 CMS 로
+# 복붙할 때 깨짐 방지 + Google word separator 정상 분해 보장.
+_ALT_CHAR_REPLACEMENTS: dict[str, str] = {
+    "—": ",",   # em dash —
+    "–": "-",   # en dash –
+    "…": "...", # ellipsis …
+    "·": " ",   # middle dot ·
+    "•": ",",   # bullet •
+    "→": " ",   # right arrow →
+    "←": " ",   # left arrow ←
+    "↔": " ",   # left-right arrow ↔
+    "⇒": " ",   # double right arrow ⇒
+    "「": "(",   # 「
+    "」": ")",   # 」
+    "『": "(",   # 『
+    "』": ")",   # 』
+    "“": '"',   # left double quote “
+    "”": '"',   # right double quote ”
+    "‘": "'",   # left single quote ‘
+    "’": "'",   # right single quote ’
+}
+
+
+def _sanitize_alt(text: str) -> str:
+    """alt_text 안 unicode 기호를 ASCII 등가로 치환 + 공백 정규화."""
+    if not text:
+        return text
+    out = text
+    for src, dst in _ALT_CHAR_REPLACEMENTS.items():
+        out = out.replace(src, dst)
+    # 공백/구두점 정리 — em dash 양쪽 공백 → ', ' 등 치환 잔재 흡수.
+    out = re.sub(r"\s+", " ", out)          # 다중 공백 collapse
+    out = re.sub(r"\s+,", ",", out)         # 쉼표 앞 공백 제거
+    out = re.sub(r"(,\s*)+", ", ", out)     # 중복 쉼표 → ', ' 1개
+    return out.strip(" ,")
 
 
 def _blocks_to_text(blocks: list[dict[str, Any]]) -> str:
@@ -341,8 +382,14 @@ async def _process_slot(
     log_db_id: str,
     work_dir: Path,
     page_cost_so_far: float,
+    page_title: str = "",
+    seen_alts: set[str] | None = None,
 ) -> SlotResult:
-    """한 슬롯을 처리. 슬롯 단위 try/except는 호출자(run_for_page) 담당."""
+    """한 슬롯을 처리. 슬롯 단위 try/except는 호출자(run_for_page) 담당.
+
+    page_title: alt_text target keyword 검증 source (v1.9 plan §13).
+    seen_alts:  페이지 안 alt_text 중복 검사용 set (orchestrator mutates).
+    """
     stype = slot["type"]
     sub = slot.get("sub_type")
     issues: list[str] = []
@@ -356,9 +403,9 @@ async def _process_slot(
         issues.append(f"Phase 1 미지원 type: {stype}")
         return SlotResult(stype, sub, False, None, issues, 0.0, 0)
 
-    # review_input — 본문 일치 + §23
+    # review_input — 본문 일치 + §23 + alt_text 검증 (v1.9)
     try:
-        review, c = await review_input(stype, slot["extracted_data"], page_text)
+        review, c = await review_input(stype, slot["extracted_data"], page_text, page_title)
         slot_cost += c
         if not review["passed"]:
             issues.extend(review.get("issues", []))
@@ -446,13 +493,40 @@ async def _process_slot(
 
             review_passed = True
 
+            # v1.9 plan §13 — caption-only alt_text 트랙. 80자 초과/빈값/페이지 중복 시 caption 생략.
+            # §13.5 #7 ASCII 기호만 룰 — LLM 1차 차단 후 sanitize 가 최종 안전망.
+            alt_raw = _sanitize_alt(
+                (slot["extracted_data"].get("alt_text") or "").strip()
+            )
+            alt_status: Literal["ok", "empty", "truncated", "duplicate"] = "ok"
+            caption_to_send = ""
+            if not alt_raw:
+                alt_status = "empty"
+            elif len(alt_raw) > ALT_TEXT_MAX_CHARS:
+                alt_status = "truncated"
+                logger.warning(
+                    "slot %s alt_text %d자 > %d 한계 — caption 생략 (슬롯은 살림)",
+                    stype, len(alt_raw), ALT_TEXT_MAX_CHARS,
+                )
+            elif seen_alts is not None and alt_raw in seen_alts:
+                alt_status = "duplicate"
+                logger.warning(
+                    "slot %s alt_text 페이지 안 중복 — caption 생략: %r", stype, alt_raw,
+                )
+            else:
+                caption_to_send = alt_raw
+                if seen_alts is not None:
+                    seen_alts.add(alt_raw)
+
             # upload + insert
             file_upload_id = await upload_image(webp)
             new_block_id = await insert_image_block(
                 parent_id=page_id,
                 after_block_id=slot["position_after_block_id"],
                 file_upload_id=file_upload_id,
+                caption=caption_to_send,
             )
+            slot.setdefault("_runtime", {})["alt_text_status"] = alt_status
             break
         except (ChartDataError, ValueError, JinjaUndefinedError, KeyError) as e:
             # 5/18 fix (root cause #4 헛재시도 차단):
@@ -484,6 +558,9 @@ async def _process_slot(
     _gm: Literal["template", "gpt-image-2-instant", "gpt-image-2-thinking"] = (
         gen_method  # type: ignore[assignment]
     )
+    # v1.9 plan §13.8 — alt_text_status 운영 모니터링.
+    # _runtime 은 caption 분기 시 set 됨. 렌더 전 폐기 케이스는 status 미정 ("unknown") 로 흡수.
+    alt_runtime_status = (slot.get("_runtime") or {}).get("alt_text_status", "unknown")
     try:
         await log_metadata(
             log_db_id=log_db_id,
@@ -495,6 +572,7 @@ async def _process_slot(
             input_data={
                 **slot["extracted_data"],
                 "notion_block_id": new_block_id,
+                "alt_text_status": alt_runtime_status,
             },
             cost_usd=slot_cost,
             attempts=attempts,
@@ -527,10 +605,15 @@ async def run_for_page(
     if not content_db_id:
         raise RuntimeError(f"page {page_id} parent에 database_id 없음: {page.get('parent')}")
 
+    # v1.9 plan §13 — alt_text target keyword source. 빈 title 도 OK (alt 생성은 가능, 일관성만 ↓).
+    page_title = extract_page_title(page)
+    if not page_title:
+        logger.warning("page %s title 비어있음 — alt_text target keyword 일관성 ↓", page_id)
+
     blocks = await get_page_blocks(page_id)
     page_text = _blocks_to_text(blocks)
 
-    slots, analyze_cost = await analyze_content(blocks)
+    slots, analyze_cost = await analyze_content(blocks, page_title=page_title)
     logger.info("analyze_content: %d 슬롯, $%.4f", len(slots), analyze_cost)
 
     # §19.6 — 슬롯 0개 페이지도 운영 추적용 1행 기록. 운영팀이 "왜 이미지가 안 들어갔지?"
@@ -556,6 +639,8 @@ async def run_for_page(
 
     page_cost = analyze_cost
     results: list[SlotResult] = []
+    # v1.9 plan §13.5 #6 — 페이지 안 alt_text 중복 검사용 set. _process_slot 가 caption 박힐 때 add.
+    seen_alts: set[str] = set()
 
     with tempfile.TemporaryDirectory(prefix="ehyun_render_") as tmp:
         work_dir = Path(tmp)
@@ -564,6 +649,7 @@ async def run_for_page(
                 r = await _process_slot(
                     slot, page_id, page_source, page_text,
                     log_db_id, work_dir, page_cost,
+                    page_title=page_title, seen_alts=seen_alts,
                 )
             except Exception as e:
                 logger.exception("슬롯 %r 예외 — 다음 슬롯 진행", slot.get("type"))
