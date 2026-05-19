@@ -352,66 +352,104 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 - §12.8 트리거 정의(N=10, emphasis ≥30%) 자체 갱신은 자연 누적 데이터 없이 시기상조 — schedule 가동 후 자연 빈도 측정 후 결정.
 - `schedule` 활성화·운영자 검수 부담 결정은 별 트랙 (§10 미결정 항목). 이 §12.8 트리거 평가 트랙과 직교.
 
-## 13. SEO + a11y 메타데이터 (alt_text + filename_slug) — v1.7.2-plan
+## 13. SEO + a11y 메타데이터 (alt_text caption) — v1.9-plan
 
-> **한 줄 사상**: LLM이 이미 카드의 모든 사실을 알고 있으므로 alt 한 줄 생성은 0 marginal. Notion = staging + 인간 검수 → 발행 path니까 caption→alt 매핑 검증 불필요, Notion *어디든* 들어가기만 하면 됨.
+> **한 줄 사상**: LLM이 이미 카드의 모든 사실을 알고 있으므로 alt 한 줄 생성은 0 marginal. Notion image caption에 **alt 추천문** 으로 박고, **인간 검수자가 발행 시 alt 최종 결정** (caption 그대로 옮기거나 다듬어 사용). caption→alt 매핑 자동화 X — 검수자 손에 좋은 시드 한 줄 제공이 목표.
 >
-> **§12와 독립** — SDK migration 전/후 무관, 현재 `claude.exe` 경로에서 그대로 ship 가능. Week 0 SDK spike *전*에 끼우기로 결정.
+> **§12와 독립** — SDK migration 전/후 무관, 현재 `claude.exe` 경로에서 그대로 ship 가능.
+>
+> **v1.7.2 → v1.9 변경 (2026-05-19)**: filename_slug 트랙 드롭 / callout block → image caption only / 길이 125자 → 80자 (한국어 SEO 정합) / 7종 alt 룰 추가 / SEO 룰 6개 + 카드별 패턴 6개 명시.
 
 ### 13.1 목표
 
-- **alt_text**: SEO 검색 노출 + a11y 스크린리더 지원 (한국 법률 콘텐츠 a11y 영역 의무에 가까움)
-- **filename_slug**: 발행 시 CDN URL 의미 있는 파일명
+- **alt_text caption**: 발행 시 검수자가 그대로 옮길 수 있는 SEO/a11y 최적화 추천문. 한국어 80자 이하, target keyword 1회 자연스럽게 포함.
+- **filename_slug**: 이번 트랙 드롭 (caption-only 결정에 따라 노션에 들어갈 자리 없음). 향후 CDN URL 트랙 부활 시 재논의.
 
 ### 13.2 적용 범위
 
-7종 카드 모두 (`simple_table` / `chart` 4 sub-type / `comparison_table` / `key_points_card` / `timeline` / `illustration` / `kakao_dialogue`). 슬롯 단위 1쌍.
+7종 카드 모두 (`simple_table` / `chart` 4 sub-type / `comparison_table` / `key_points_card` / `timeline` / `ai_visual` / `kakao_dialogue`). 슬롯당 alt_text 1개.
 
 ### 13.3 데이터 흐름
 
 ```
-[analyze_content]
-  └─ LLM이 alt_text + filename_slug 생성 (parametric 결정 전, data-only)
-        ↓
-[review_input]
-  └─ alt_text 사실 일치 + §23 검사 (filename_slug는 길이/regex만)
-        ↓
-[Notion 삽입]
-  ├─ image block
-  └─ callout block (💡) 1개 — 이미지 직후 (인간 검수자 발견성 ↑)
-        Content: [ALT] {alt_text}
-                 [FILENAME] {filename_slug}.webp
+[fetch_pages_by_status] page.title 함께 추출
+       ↓
+[analyze_content(blocks, page_title)]
+  └─ LLM이 7종 카드 모두 extracted_data.alt_text 생성
+       (data-only / parametric 결정 전 / target keyword 본문 제목에서 추출)
+       ↓
+[review_input(slot_type, slot_data, page_text, page_title)]
+  └─ alt_text 사실 일치 + 길이 + target keyword + §23 검사
+       ↓
+[orchestrator] alt 길이/빈값 가드 → alt_text_status 결정
+       ↓
+[insert_image_block(caption=alt_text)]
+  └─ Notion image block.caption 으로 박힘
+       (검수자가 발행 시 alt 속성으로 옮김 — 자동 매핑 X)
 ```
 
 ### 13.4 가드
 
 | 가드 | 적용 |
 |---|---|
-| 사실 정확성 #1 | 슬롯 데이터 안 내용만 기술. alt도 `review.py` 검사 대상 (라벨링 영역) |
-| §23 컴플라이언스 | alt에 절대성/과장/시간 압박/비교 광고 표현 X. `tools/compliance/keywords.py` regex pass 적용 |
-| 길이 제한 | `alt_text` 125자 이하 (Google 권장치), `filename_slug` 80자 이하 |
-| `filename_slug` 형식 | snake_case, 영문 소문자/숫자/`_`만 (한글 X — CDN URL 호환성) |
+| 사실 정확성 #1 | alt는 카드 데이터/본문 안에서 합성 (라벨링 영역). 본문에 없는 사실/숫자/주체 삽입 X. `review.py` 검사 대상. |
+| §23 컴플라이언스 | alt에 절대성/과장/시간 압박/비교 광고 표현 X. `tools/compliance/keywords.py` regex pass 가 `_collect_strings` 재귀로 자동 흡수. |
+| 길이 제한 | `ALT_TEXT_MAX_CHARS = 80` (한국어 정보 밀도 ↑ — 영문 125자 ≈ 한국어 60-80자). |
+| 빈값 정책 | LLM 생성 실패 / validator 초과 시 caption 생략, 슬롯은 살림. `alt_text_status` 로그로 추적 → 1주 운영 후 폐기 전환 재검토. |
 
-### 13.5 작업 항목 (예상 1-2일)
+### 13.5 SEO 생성 룰 (6개 — `slot_selection.md` 와 `analyze_content` system prompt)
 
-1. 슬롯 스키마 7종 모두에 `alt_text: str`, `filename_slug: str` 필드 추가
-2. `skills/meta/slot_selection.md` 또는 `analyze_content` system prompt에 생성 룰 추가 (한국어 125자 이하 / 차트 핵심 인사이트 1개 / 출처 포함 가능)
-3. `tools/llm/review.py` alt_text 검사 항목 추가 (§23 + 본문 일치)
-4. validator 추가 (길이 / filename regex) — `tools/limits.py` 또는 dataclass `__post_init__`
-5. `tools/notion/insert_image_block.py` callout block 1개 삽입 로직 (image block 직후)
-6. 1페이지 e2e 검증 — 7종 카드 중 활성 슬롯에 callout이 정확히 들어가는지
+1. **한국어 80자 이하**. 초과 시 review.py 가 슬롯 폐기 또는 caption 생략 분기.
+2. **Front-load 키워드** — 핵심 명사를 앞에 배치. 서술문 prefix 지양 ("다음 표는 ~을 정리한" X).
+3. **페이지 target keyword 1회 자연스럽게 포함** — `page_title` 의 핵심 명사 1회. stuffing(2회+) 금지.
+4. **본문 단순 반복 X** — 카드 안 텍스트/본문 문장 통째 복붙 X. 카드가 표현하는 *관계/추이/패턴/주제* 묘사. (Levenshtein 거리 5 이하 시 review.py 경고)
+5. **자기지시 단어 X** — "이미지" / "그림" / "사진" / "차트" / "표" 같은 자기 메타 단어 사용 X (SEO 안티패턴, "차트"는 데이터 추이 묘사로 대체).
+6. **페이지 안 alt 중복 X** — 한 페이지 슬롯 N개의 alt 가 서로 달라야 함. orchestrator 가 페이지 단위 set 검사.
 
-### 13.6 §12와의 관계
+### 13.6 카드별 패턴 (6개 — `slot_selection.md` 출력 형식 섹션)
 
-- 완전 독립 트랙. SDK migration 전/후 어느 쪽에서도 작동
-- §12 Week 3b parametric 결정(`orientation` / `emphasis_index`)은 alt에 반영 X — alt는 **data-only**, 시각 강조 묘사 X
-- §12 Week 1-2 SDK 마이그레이션 시 검증 항목: 새 SDK 경로에서도 `analyze_content`가 `alt_text` / `filename_slug`를 동일하게 emit하는지
+| 카드 | alt 패턴 |
+|---|---|
+| `chart` | "[주제] [기간] 추이 — [시작값]에서 [끝값]로 [방향]" 예: "이혼소송 접수 2021-2024 추이, 2.9만→3.4만 증가" |
+| `simple_table` / `comparison_table` | "[주제] [N]가지 [축]" 예: "세입자 권리 4가지 핵심 정리" |
+| `key_points_card` | "[주제] 핵심 [N]가지" 예: "음주운전 면허정지 대응 핵심 3가지" |
+| `timeline` | "[주제] [N]단계 절차" 예: "상속 분쟁 조정 5단계 절차" |
+| `kakao_dialogue` | "[주제] 의뢰인-변호사 상담 발췌" 예: "음주운전 측정 0.08 상담 발췌" |
+| `ai_visual` | 기존 룰 (scene 본문 합성) 유지 + 80자 / target keyword 1회 정합화 |
 
-### 13.7 미결정
+### 13.7 작업 항목 (예상 1일)
 
-- Notion 형식 — callout 채택했으나 검수자 워크플로우 1주일 운영 후 재검토 (caption / paragraph block 비교)
-- `filename_slug` 한글→영문 변환 룰 — 첫 PR은 LLM이 영문 키워드 기반 생성 (음역 X). 운영 후 결정.
-- 7종 카드 *공통* 룰 vs *카드별* 룰 — 첫 PR은 공통. illustration처럼 데이터 없는 카드는 prompt에 별도 가이드 필요할 수 있음.
+1. plan §13 SOT 갱신 (본 항목)
+2. `feat/alt-text-caption` 브랜치 생성
+3. `skills/meta/slot_selection.md` — 7종 카드 alt_text 필드 + SEO 룰 6개 + 카드별 패턴 6개 추가. `ai_visual.md` / `illustration.md` 의 기존 alt 룰 정합화 (80자).
+4. `tools/limits.py` — `ALT_TEXT_MAX_CHARS: Final[int] = 80` 상수 추가.
+5. `tools/llm/analyze_content.py` — `page_title: str` 인자 추가, system prompt 상단에 "PAGE TITLE: {page_title}" 명시 + 위 룰 inject.
+6. `tools/llm/review.py` / `skills/meta/prompt_review.md` — alt_text 검사 항목 추가 (길이 / target keyword 1회 / 본문 통째 복붙 X / 자기지시 X). `page_title: str` 인자 추가.
+7. `orchestrator.py` — caption 전달 + 가드 (80자 초과 시 caption 생략 + slot 살림) + `alt_text_status` 로그 (`ok` / `empty` / `truncated`).
+8. 1페이지 e2e — 슬롯 caption 박힘 / analyze cost before-after / page cap $2.50 안전 / 페이지 안 alt 중복 X 확인.
+
+> `insert_image_block.py` 는 변경 없음 (`caption: str = ""` 파라미터 기존 존재).
+
+### 13.8 운영 모니터링 — `alt_text_status` 컬럼
+
+`log_metadata.input_data` 에 슬롯별 `alt_text_status` 기록:
+- `ok`: caption 박힘, 검수자 발견 OK
+- `empty`: LLM 미생성 또는 validator 실패 → 검수자 직접 작성 필요
+- `truncated`: 80자 초과로 caption 생략 (LLM 룰 재학습 신호)
+
+1주 운영 후 메트릭 점검: empty 비율 ≥ 10% 면 slot 폐기 정책 전환, truncated 비율 ≥ 5% 면 LLM 룰 강화 또는 한도 재검토.
+
+### 13.9 §12 (SDK migration) 와의 관계
+
+- 완전 독립 트랙. SDK migration 전/후 어느 쪽에서도 작동.
+- §12 Week 3b parametric 결정(`orientation` / `emphasis_index`)은 alt 에 반영 X — alt 는 **data-only**, 시각 강조 묘사 X.
+- §12 Week 1-2 SDK 마이그레이션 시 검증 항목: 새 SDK 경로에서도 `analyze_content` 가 7종 alt_text 를 동일하게 emit 하는지.
+
+### 13.10 미결정
+
+- `alt_text_status: empty` 슬롯 폐기 vs 살림 정책 — 1주 운영 후 메트릭 기반 결정.
+- target keyword 추출 source — 첫 PR 은 `page_title` (Notion title property). 미흡 시 H1/H2 명사 결합 추출 추가 검토.
+- filename_slug 트랙 부활 — 향후 CDN URL / 자체 발행 인프라 필요 시점에 별도 트랙으로 재논의.
 
 ## 14. Phase 4 — 감성형 카드 사상 재설계 + 토스피드 톤 정합 (v1.8-plan)
 
