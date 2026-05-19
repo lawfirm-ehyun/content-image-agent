@@ -54,7 +54,7 @@ Python 3.12 / uv / Playwright(Chromium-headless-shell) / Chart.js CDN / Pretenda
 
 - brand wine-magenta `#a91c51` monochromatic, 차트 secondary는 desaturated 변형 (토스피드 navy→light blue 패턴 차용)
 - neutral은 Tailwind Zinc (true neutral, brand 언더톤 충돌 X)
-- **카드 배경은 예외** — Phase 4.1 (2026-05-15 결정) `--card-bg: #eaeaea` warm light gray 도입. Zinc cool 톤 외 유일 예외. 토스피드 "소프트 에디토리얼 미니멀리즘" 톤 정합 위해. 적용 위치: `_base.css` `.card { background }` + `master_chart.html` `.card` override. 다른 컴포넌트(셀/헤더/legend swatch 등)는 Zinc 그대로.
+- **카드 배경은 예외** — Phase 4.1 (2026-05-15 결정) `--card-bg: #f5f5f5` warm light gray 도입. Zinc cool 톤 외 유일 예외. 토스피드 "소프트 에디토리얼 미니멀리즘" 톤 정합 위해. 적용 위치: `_base.css` `.card { background }` + `master_chart.html` `.card` override. 다른 컴포넌트(셀/헤더/legend swatch 등)는 Zinc 그대로.
 - 차트 multi-series 멀티 컬러 X — 같은 plum 계열 채도 변형으로만
 - brand.primary는 강조 포인트로만 (표 키 컬럼, 차트 메인 라인, 강조 텍스트). 표 본문 셀에는 X.
 

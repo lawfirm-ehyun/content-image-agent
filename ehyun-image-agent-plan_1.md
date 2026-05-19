@@ -462,7 +462,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 
 - 카드 배경 `#ffffff` 강제가 토스피드 톤과 불일치. drift 발생 위치 3곳: `styles/ehyun_default.yaml:87` `card_defaults.background: '#ffffff'` + `templates/_base.css:147` `.card { background: var(--neutral-0) }` + `tools/render/ai_render.py:58` `"clean white background"`.
 - `reference_library/_meta.yaml` 은 **로컬 파일로 존재**하나 `reference_library/` 디렉터리 전체가 `.gitignore:90` 으로 untrack (commit `60ed019`) — git 이력 0회. 운영자 로컬 메타라 SOT 영향 0. **결정 (2026-05-15, 사용자 컨펌)**: meta.yaml 별도 신설 X, **yaml/css 토큰 직접 갱신 path 채택**. _meta.yaml 의 chart `background: light_gray` 명시는 토스피드 reference 의도 기록으로만 보존.
-- **Pattern 1 배경 hex 결정 (2026-05-15, 사용자 컨펌)**: `#eaeaea` literal + 신규 token `--card-bg` (yaml `card_bg`) 도입. 기존 Zinc cool-neutral 사상에 **카드 배경만 warm gray 예외** 허용 — CLAUDE.md "컬러 시스템" 도 동기 갱신.
+- **Pattern 1 배경 hex 결정 (2026-05-15, 사용자 컨펌)**: `#f5f5f5` literal + 신규 token `--card-bg` (yaml `card_bg`) 도입. 기존 Zinc cool-neutral 사상에 **카드 배경만 warm gray 예외** 허용 — CLAUDE.md "컬러 시스템" 도 동기 갱신.
 - gpt-image-2-2026-04-21 한글 정확도가 v1.6.4 이후 상승 → AI 활용 비율 상향 정당화.
 - 기존 illustration "라인 일러스트 단일 스타일 고정" → 콘텐츠 톤 다양성 부족. 본문 context 에 맞는 best fit 스타일 선택 필요.
 
@@ -474,7 +474,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 
 | # | 패턴 | 코드 위치 |
 |---|---|---|
-| 1 | 배경 light warm gray — **fix `#eaeaea` 신규 token `--card-bg`** (사용자 컨펌 2026-05-15, §14.1 참조) | `styles/ehyun_default.yaml` `card_defaults.background` + `card_bg` 신설 + `templates/_base.css` `--card-bg` 변수 + `.card { background: var(--card-bg) }` + `templates/master_chart.html` `.card` override `--neutral-100` → `--card-bg` 정합 |
+| 1 | 배경 light warm gray — **fix `#f5f5f5` 신규 token `--card-bg`** (사용자 컨펌 2026-05-15, §14.1 참조) | `styles/ehyun_default.yaml` `card_defaults.background` + `card_bg` 신설 + `templates/_base.css` `--card-bg` 변수 + `.card { background: var(--card-bg) }` + `templates/master_chart.html` `.card` override `--neutral-100` → `--card-bg` 정합 |
 | 2 | 카드 padding 80-100px 느낌 (현재 60px → 80px sp-3xl 사용) | `templates/_base.css` `.card { padding }` |
 | 3 | 제목 좌상단 매우 bold (`--fw-bold` 유지, 위치만 좌상단 anchor) | `templates/_base.css` `.card__title` |
 | 4 | 컬러 monochromatic 2-3색 + warm accent 1 (`brand.primary` + neutral + `chart.accent_warm`) — 현 정책 유지, 컬러 토큰 변경 X |
@@ -484,8 +484,8 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 | 8 | 콘텐츠:여백 ≈ 50:50 — **결정 (2026-05-15, 사용자 컨펌)**: padding 80 적용만 (Pattern 2). chart 만 기존 `min-height: 900px` 유지, 나머지 4종 `height: auto` 그대로. 짧은 콘텐츠 50:50 미보장은 4.2 진입 후 운영 데이터 보고 결정. | `.card` height 자동 (변경 X), `.card--chart { min-height: 900px }` 유지 |
 
 **산출물 (Phase 4.1 Do)** — 2026-05-15 사용자 컨펌 commit slice 5개:
-- `styles/ehyun_default.yaml` — `card_defaults.background` `#ffffff` → `#eaeaea` + `card_defaults.padding` 64 → 80 + `colors.neutral.card_bg` 신설
-- `templates/_base.css` — `--card-bg: #eaeaea` 변수 신설 + `.card { background: var(--card-bg); padding: var(--sp-3xl) }` 동기 (Pattern 1+2)
+- `styles/ehyun_default.yaml` — `card_defaults.background` `#ffffff` → `#f5f5f5` + `card_defaults.padding` 64 → 80 + `colors.neutral.card_bg` 신설
+- `templates/_base.css` — `--card-bg: #f5f5f5` 변수 신설 + `.card { background: var(--card-bg); padding: var(--sp-3xl) }` 동기 (Pattern 1+2)
 - `templates/master_chart.html` — `.card` background override `var(--neutral-100)` → `var(--card-bg)` 정합 (line/bar/donut/pie 분기 모두). 나머지 4 templates (`simple_table`/`comparison_table`/`key_points_card`/`timeline`) 은 `.card` background override 없어 _base.css 갱신만으로 자동 적용 = 변경 0.
 - `tools/render/ai_render.py:_build_illustration_prompt` 의 "clean white background" 표현 → "soft light gray warm neutral background" 로 정합 (Phase 4.2 deprecate 전까지 잠정)
 - ~~`reference_library/_meta.yaml` 신설~~ → §14.1 결정대로 **skip** (yaml/css 토큰 직접 갱신 path 채택)

@@ -7,7 +7,7 @@
   byte-identity 회귀 가드: tests/fixtures/v1_6_4_chart_baseline/*.png
     - 1차 lock: SHA256 at 308d98e (v1.6.4, background #ffffff)
     - 2차 lock: v1.8 Phase 4.1 post-aa69eb2 재기록 (2026-05-15, background
-      #eaeaea warm light gray). plan §14.6 4.1 Done #3 close. 사실 데이터
+      #f5f5f5 warm light gray). plan §14.6 4.1 Done #3 close. 사실 데이터
       OCR text diff 0 사용자 컨펌됨, byte-identity는 신 baseline 으로 갱신.
 
   Variables (Jinja2):
@@ -46,7 +46,7 @@
   <style>
   {%- if sub_type in ('line', 'bar') %}
     .card {
-      /* v1.8 Phase 4.1: --neutral-100(#f4f4f5) → --card-bg(#eaeaea) 정합.
+      /* v1.8 Phase 4.1: --neutral-100(#f4f4f5) → --card-bg(#f5f5f5) 정합.
        * _base.css .card 와 동일 토큰 사용 — 정보형 5종 카드 배경 통일. */
       background: var(--card-bg);
       gap: var(--sp-lg);
@@ -73,7 +73,7 @@
   {%- else %}
     .card {
       /* v1.8 Phase 4.1: chart 카테고리 배경 통일 — line/bar 분기와 같은
-       * --card-bg(#eaeaea) 토스피드 톤. v1.4 의 --neutral-100 갱신. */
+       * --card-bg(#f5f5f5) 토스피드 톤. v1.4 의 --neutral-100 갱신. */
       background: var(--card-bg);
       gap: var(--sp-xl);
     }

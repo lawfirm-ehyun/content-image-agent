@@ -64,7 +64,7 @@ def _build_illustration_prompt(data: dict[str, Any]) -> str:
 
     # v1.8 Phase 4.1 (2026-05-15): "clean white background" → "soft light gray
     # warm neutral background" 로 정합. 정보형 카드 light-gray 배경(--card-bg
-    # #eaeaea) 과 시각 톤 통일. Phase 4.2 에서 ai_visual + 스타일 라이브러리
+    # #f5f5f5) 과 시각 톤 통일. Phase 4.2 에서 ai_visual + 스타일 라이브러리
     # 로 흡수되며 본 함수 자체 deprecate 예정 — 그 전까지 잠정 표현.
     return (
         "Korean editorial line illustration, minimalist outline drawing.\n"
