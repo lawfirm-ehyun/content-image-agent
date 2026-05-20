@@ -23,6 +23,22 @@ from tools.notion import get_client, norm_uuid
 from tools.notion._retry import notion_call
 
 
+class BlockNotFoundError(RuntimeError):
+    """after_block_id retrieve 404 — LLM 환각 또는 페이지 편집으로 stale.
+
+    §19.18 (2026-05-20): 같은 invalid ID 로 N회 헛재시도하는 비용 누수
+    (webp/upload N회) 차단. orchestrator 화이트리스트가 이 예외 잡아 즉시 break.
+    """
+
+
+class AncestorMismatchError(RuntimeError):
+    """_verify_ancestor 실패 — block 이 다른 페이지에 속함 (LLM 환각으로 cross-page id).
+
+    §19.18 (2026-05-20): retrieve 는 통과했으나 ancestor chain 이 expected_page_id 에
+    도달하지 못한 경우. 동일 input 재시도 의미 X → orchestrator 화이트리스트로 즉시 break.
+    """
+
+
 async def insert_image_block(
     parent_id: str,
     after_block_id: str,
@@ -43,7 +59,7 @@ async def insert_image_block(
     try:
         target = await notion_call(client.blocks.retrieve, block_id=after_block_id)
     except Exception as e:
-        raise RuntimeError(
+        raise BlockNotFoundError(
             f"after_block_id={after_block_id} retrieve 실패 (block 미존재/권한 부족): {e}"
         ) from e
     anchor_id = after_block_id
@@ -113,7 +129,7 @@ async def _verify_ancestor(
             actual = parent.get("page_id")
             if norm_uuid(actual) == norm_uuid(expected_page_id):
                 return
-            raise RuntimeError(
+            raise AncestorMismatchError(
                 f"block_id가 처리 페이지에 없음 (§19.2): "
                 f"기대 page={expected_page_id}, 실제 ancestor page={actual}"
             )
@@ -122,5 +138,5 @@ async def _verify_ancestor(
             current = await notion_call(client.blocks.retrieve, block_id=block_id)
             continue
         # workspace / database / 그 외 — 본 함수가 다루는 콘텐츠 페이지 ancestor가 아님
-        raise RuntimeError(f"block_id가 처리 페이지에 없음 (§19.2): 예상 외 parent type={ptype}")
-    raise RuntimeError(f"block_id가 처리 페이지에 없음 (§19.2): ancestor 추적 {max_depth}단계 초과")
+        raise AncestorMismatchError(f"block_id가 처리 페이지에 없음 (§19.2): 예상 외 parent type={ptype}")
+    raise AncestorMismatchError(f"block_id가 처리 페이지에 없음 (§19.2): ancestor 추적 {max_depth}단계 초과")

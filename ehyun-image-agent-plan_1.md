@@ -90,7 +90,7 @@ plan 안에서 자주 참조하는 핵심 4개:
 | 가드 | 코드 위치 | 사상 |
 |---|---|---|
 | **멱등성 + page try/except** | `orchestrator.py` (`get_logged_page_ids`, `process_database` try/except) | 동일 page_id 재처리 자동 skip + page-level 실패는 다음 페이지 진행 |
-| **block UUID 검증** | `tools/notion/insert_image_block.py:_verify_ancestor` | LLM 환각으로 다른 페이지에 이미지 박힘 차단 |
+| **block UUID 환각 검증 (사전 + 사후) + retry 차단** | 사전: `tools/llm/analyze_content.py` known-id 게이트 / 사후: `tools/notion/insert_image_block.py:_verify_ancestor` / retry: `orchestrator.py` 화이트리스트 (`BlockNotFoundError`, `AncestorMismatchError`) | analyze 가 환각 UUID 산출 → 사전 게이트가 drop. 사전 게이트 통과 후 retrieve 404/ancestor 불일치 → 사후 dedicated exception 으로 즉시 break (webp/upload 3회 헛비용 차단 — 2026-05-20 운영 1건 $0.10 누수 사례) |
 | **API rate limit backoff** | `tools/notion/_retry.py` (Notion) + `tools/image/gpt_image_2.py` (OpenAI, tenacity) | 429/5xx 자동 지수 재시도 + 페이지 사이 0.5s sleep |
 | **비용 cap (페이지/런/슬롯/analyze/review)** | `tools/limits.py` + `tools/budget.py` | RunBudget 누적, cap 초과 시 즉시 break + 슬롯 폐기 |
 | **§23 컴플라이언스** | `tools/compliance/keywords.py` (1차 regex) + `tools/llm/review.py` (2차 LLM) | LLM 호출 전 키워드 차단 (호출당 $0.30 절약) + 본문 일치 + §23 LLM 재검토 |

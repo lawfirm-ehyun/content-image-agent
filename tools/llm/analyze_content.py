@@ -149,11 +149,27 @@ async def analyze_content(
     # L126·190·293 "매칭 실패 시 슬롯 폐기, 임의 default 금지" 사상을 analyze 단계 게이트로
     # 강제. drop 된 슬롯은 cron stderr warning 으로 운영 추적 (노션 로그 박는 enhancement는
     # follow-up — 시그니처 변경 영향이 spike 스크립트까지 미침).
+    #
+    # 5/20 §19.18 보강: position_after_block_id 가 compact_blocks 의 known-id set 에
+    # 속하는지 사전 검증. LLM 이 환각 UUID 산출하면 insert_image_block 까지 미뤄져
+    # retrieve 404 발생 → 같은 invalid ID 로 헛재시도 (webp/upload 3회 비용 누수).
+    # 2026-05-20 운영 1건: ID `36643f95-d72a-8069-8199-eb287f3ad296` 환각 → $0.10 누수.
+    known_block_ids = {c["id"] for c in compacted if c.get("id")}
     valid_styles = {s.name for s in list_visual_styles()}
     filtered: list[dict[str, Any]] = []
     for slot in slots:
         if not isinstance(slot, dict):
             logger.warning("analyze gate: 슬롯이 dict 아님 — drop: %r", slot)
+            continue
+        # §19.18 — position_after_block_id known-id 게이트.
+        # 압축 모드(_compress_for_analyze)에서 일부 block 만 LLM 에 노출됨 → known_block_ids 는
+        # compact 후 set. LLM 이 못 본 block 을 산출할 수 없는 게 정상이므로 set 밖 = 환각.
+        aid = slot.get("position_after_block_id")
+        if not aid or aid not in known_block_ids:
+            logger.warning(
+                "analyze gate: 환각 block_id 폐기 — type=%s position_after_block_id=%r",
+                slot.get("type"), aid,
+            )
             continue
         if slot.get("type") == "ai_visual":
             data = slot.get("extracted_data") or {}

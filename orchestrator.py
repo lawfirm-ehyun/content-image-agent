@@ -44,7 +44,11 @@ from tools.llm.review import review_input
 from tools.notion import extract_page_title, get_client, norm_uuid
 from tools.notion.fetch_pages import fetch_pages_by_status
 from tools.notion.get_page_content import get_page_blocks
-from tools.notion.insert_image_block import insert_image_block
+from tools.notion.insert_image_block import (
+    AncestorMismatchError,
+    BlockNotFoundError,
+    insert_image_block,
+)
 from tools.notion.log_metadata import get_logged_page_ids, log_metadata
 from tools.notion.update_status import update_page_status
 from tools.notion.upload_image import upload_image
@@ -528,12 +532,17 @@ async def _process_slot(
             )
             slot.setdefault("_runtime", {})["alt_text_status"] = alt_status
             break
-        except (ChartDataError, ValueError, JinjaUndefinedError, KeyError) as e:
-            # 5/18 fix (root cause #4 헛재시도 차단):
+        except (
+            ChartDataError, ValueError, JinjaUndefinedError, KeyError,
+            BlockNotFoundError, AncestorMismatchError,
+        ) as e:
+            # 5/18 fix + 5/20 §19.18 보강 (헛재시도 차단):
             # - ChartDataError: 정보형 카드 데이터 검증 실패
             # - ValueError: ai_render의 visual_style 누락 등 입력 결함
             # - JinjaUndefinedError: StrictUndefined 환경 옵션 필드 missing
             # - KeyError: dict access 누락
+            # - BlockNotFoundError: after_block_id retrieve 404 (LLM 환각 / stale)
+            # - AncestorMismatchError: 다른 페이지 block_id (cross-page 환각)
             # 모두 같은 input 으로 재시도해도 안 풀림 → 즉시 break.
             issues.append(f"데이터 결함 (시도 {attempts}): {type(e).__name__}: {e}")
             logger.warning(

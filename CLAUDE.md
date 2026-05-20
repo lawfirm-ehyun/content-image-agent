@@ -88,6 +88,10 @@ Python 3.12 / uv / Playwright(Chromium-headless-shell) / Chart.js CDN / Pretenda
 - 비용 단일 source — `tools/limits.py` (18개 Final 상수) + `tools/budget.py` (`RunBudget`)
 - §3 cron 진입점 — `orchestrator.main()` argparse 분기 (인자 없음 sweep / `--mode list` / `--page-id+--source`) + `.github/workflows/cron.yml` 2-step matrix fan-out (v1.7.5-plan)
 
+**Phase 4 보강 — 2026-05-20 운영 1건 반영 ✅**:
+- §19.18 block_id 환각 사전 게이트 — `analyze_content.py`가 LLM 산출 `position_after_block_id`를 `compact_blocks` known-id set과 대조해 환각 UUID 슬롯 사전 drop
+- §19.18 retry whitelist 확장 — `insert_image_block`에 `BlockNotFoundError` / `AncestorMismatchError` dedicated exception 신설, `orchestrator.py:531` except 화이트리스트에 추가 → retrieve 404 / ancestor 불일치 시 헛재시도 (3회 × webp/upload) 즉시 차단
+
 **Phase 3 진입 전 — v1.6 정의, 코드 작업 예정**:
 - §19.11 AI 카드 OCR 사실 검증 — 카드 종류별 분기 (kakao_dialogue Levenshtein / illustration 면제)
 - §19.12 OpenAI rate limit / 429 backoff
