@@ -83,6 +83,9 @@ scripts/_diag_*.py
 .bkit/runtime/
 .bkit/state/
 
+# Claude Code runtime (세션별 락, repo와 무관)
+.claude/scheduled_tasks.lock
+
 # Test fixtures — distinct 검증 산출물 (재생성 가능)
 tests/fixtures/_distinct_out/
 
