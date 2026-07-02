@@ -2,8 +2,33 @@ name: image-agent-cron
 
 # 2-step matrix fan-out (plan §3 / §12.8.3 / Changelog v1.7.5-plan).
 # schedule 은 §10 미결정 항목 — 결정 후 활성화. 현재는 workflow_dispatch 만.
+#
+# inputs 는 슬랙 슬래시 커맨드(/이미지생성) 트리거 전용 — 대시보드 릴레이
+# (inblog-seo-contents-system/dashboard/app/api/image-generate/route.ts)가
+# workflow_dispatch 시 채워 넘긴다. GitHub UI 수동 실행 / 향후 cron 은 비워두면
+# 되고, 그 경우 notify job 이 슬랙 게시를 skip 한다 (아래 job if 가드).
 on:
   workflow_dispatch:
+    inputs:
+      slack_channel:
+        description: "완료 알림을 보낼 Slack 채널 ID. 비우면 알림 안 감(수동 실행)."
+        required: false
+        default: ""
+      slack_thread_ts:
+        description: "Slack 부모 메시지 ts — 완료 알림을 이 스레드 답글로 게시."
+        required: false
+        default: ""
+      requester:
+        description: "요청한 Slack 사용자 ID (표시용 + 완료 시 @멘션)."
+        required: false
+        default: ""
+
+# 중복 실행 방지 — /이미지생성 을 연달아 눌러도 한 번에 하나의 파이프라인만 돈다.
+# cancel-in-progress: false — 진행 중인 run 을 죽이지 않고 다음 run 을 큐에 대기시킨다
+# (이미지 작업 도중 취소되면 손해). 큐잉된 run 은 멱등성(§19.1)으로 남은 페이지만 처리.
+concurrency:
+  group: image-agent-cron
+  cancel-in-progress: false
 
 jobs:
   # Job A — "이미지 필요" 페이지 목록을 JSON 으로 산출 (멱등성 필터 적용).
@@ -75,3 +100,68 @@ jobs:
           # 선택 (default = gpt-image-2-2026-04-21, override only) — tools/image/gpt_image_2.py
           OPENAI_IMAGE_MODEL_INSTANT: ${{ secrets.OPENAI_IMAGE_MODEL_INSTANT }}
           OPENAI_IMAGE_MODEL_THINKING: ${{ secrets.OPENAI_IMAGE_MODEL_THINKING }}
+
+  # Job C — 슬랙 완료 알림. 슬래시 커맨드(/이미지생성) 트리거일 때만 동작.
+  # if 가드: slack_channel 이 있어야(=슬랙에서 온 요청) 게시. 수동/향후 cron 실행은 skip.
+  # always(): fetch/process 실패·skip 여부와 무관하게 항상 돌아 결과를 회신한다.
+  notify:
+    needs: [fetch, process]
+    if: ${{ always() && github.event.inputs.slack_channel != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Post result to Slack thread
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.IMGGEN_SLACK_BOT_TOKEN }}
+          CHANNEL: ${{ github.event.inputs.slack_channel }}
+          THREAD_TS: ${{ github.event.inputs.slack_thread_ts }}
+          REQUESTER: ${{ github.event.inputs.requester }}
+          FETCH_RESULT: ${{ needs.fetch.result }}
+          PROCESS_RESULT: ${{ needs.process.result }}
+          PAGES_JSON: ${{ needs.fetch.outputs.pages }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          # 처리 대상 페이지 수 (빈 문자열 / 비-JSON 방어).
+          COUNT="$(printf '%s' "${PAGES_JSON:-[]}" | jq 'length' 2>/dev/null || echo 0)"
+          LINK="<${RUN_URL}|실행 로그 보기>"
+          NL=$'\n'
+
+          # 요청자가 있으면 완료 메시지 앞에 @멘션을 붙여 핑을 보낸다(던져놓고 딴 일 UX).
+          MENTION=""
+          if [ -n "${REQUESTER}" ]; then MENTION="<@${REQUESTER}> "; fi
+
+          if [ "${FETCH_RESULT}" != "success" ]; then
+            TEXT="⚠️ 이미지 생성 실패 — 페이지 목록 조회 단계에서 오류가 났어요.${NL}${LINK}"
+          elif [ "${COUNT:-0}" = "0" ]; then
+            TEXT="ℹ️ 처리할 '이미지 필요' 페이지가 없습니다."
+          elif [ "${PROCESS_RESULT}" = "success" ]; then
+            TEXT="✅ 이미지 생성 완료 — 총 ${COUNT}개 페이지 처리됨.${NL}${LINK}"
+          elif [ "${PROCESS_RESULT}" = "cancelled" ]; then
+            TEXT="🚫 이미지 생성이 취소되었습니다 (대상 ${COUNT}개 페이지).${NL}${LINK}"
+          else
+            TEXT="⚠️ 이미지 생성 중 일부 페이지가 실패했어요 (대상 ${COUNT}개).${NL}실행 로그에서 빨간 X 셀을 확인하세요: ${LINK}"
+          fi
+
+          # 완료 메시지 앞에 요청자 @멘션 부착 (있을 때만).
+          TEXT="${MENTION}${TEXT}"
+
+          # thread_ts 가 있으면 스레드 답글, 없으면 채널 최상위에 게시.
+          PAYLOAD="$(jq -n \
+            --arg channel "${CHANNEL}" \
+            --arg text "${TEXT}" \
+            --arg thread "${THREAD_TS}" \
+            '{channel: $channel, text: $text} + (if $thread == "" then {} else {thread_ts: $thread} end)')"
+
+          RESP="$(curl -sS -X POST https://slack.com/api/chat.postMessage \
+            -H "Authorization: Bearer ${SLACK_BOT_TOKEN}" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            --data "${PAYLOAD}")"
+
+          # Slack 은 실패해도 HTTP 200 + {ok:false} 를 주므로 body 로 판정.
+          if [ "$(printf '%s' "${RESP}" | jq -r '.ok')" != "true" ]; then
+            echo "slack post 실패: ${RESP}" >&2
+            exit 1
+          fi
+          echo "slack 알림 게시 완료."
