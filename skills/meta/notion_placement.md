@@ -1,7 +1,8 @@
 # Notion Placement
 
 ## 룰
-- 슬롯 결정 시 `position_after_block_id` 함께 결정 (slot_selection 단)
+- 슬롯 결정 시 LLM 은 `position_after_block_index` (BLOCKS 순번 idx, 정수) 결정 (slot_selection 단, v1.8.2 — LLM 에 block UUID 미노출)
+- `tools/llm/analyze_content.py` 가 idx→block_id 변환해 `position_after_block_id` 로 전달 (orchestrator 인터페이스 불변)
 - `tools/notion/insert_image_block.py`로 해당 block 다음에 image block 삽입
 - 캡션은 옵션 (차트의 source는 카드 안에 이미 있음, 표는 footnote 안에 있음 → 캡션 빈 문자열로)
 
@@ -12,7 +13,7 @@
 
 ## block_id ancestor 검증 (plan §19.2 — Phase 1 즉시 적용)
 
-**위험**: LLM이 `position_after_block_id`를 환각하거나 다른 페이지 block UUID를 던질 수 있음. 현 `insert_image_block.py`는 `target.parent`로 real_parent 동적 resolve하지만, **다른 페이지의 block parent**일 경우 다른 페이지에 이미지가 박힐 수 있음 (재앙).
+**위험**: LLM 이 위치를 환각하거나 다른 페이지 block 을 가리킬 수 있음. v1.8.2 인덱스 전환으로 UUID 환각은 원천 차단됐지만, legacy 출력 수용 path + 코드 버그 가능성이 남으므로 **사후 ancestor 검증은 안전망으로 유지**. `insert_image_block.py`는 `target.parent`로 real_parent 동적 resolve하는데, **다른 페이지의 block parent**일 경우 다른 페이지에 이미지가 박힐 수 있음 (재앙).
 
 **룰**: insert 직전 검증 필수
 1. `client.blocks.retrieve(after_block_id)` → target

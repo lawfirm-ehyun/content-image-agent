@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 # orchestrator.AI_CARD_TYPES 와 정합 (Phase 4.3 시점).
 _VISION_REVIEW_SLOT_TYPES: Final[frozenset[str]] = frozenset({
     "illustration",     # v1.8 deprecated, backwards compat — text_rule=zero 고정
-    "kakao_dialogue",   # text_rule=zero 고정 (kakao OCR Levenshtein 은 trigger 시 §19.11 추가)
+    "kakao_dialogue",   # v1.8.1 은퇴 (plan_history §1.4), backwards compat — §19.11 obsolete
     "ai_visual",        # frontmatter text_rule 사용
 })
 

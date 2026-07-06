@@ -1,6 +1,11 @@
-# kakao_dialogue (v1.6.2)
+# kakao_dialogue (v1.6.2) **[deprecated v1.8.1 — 은퇴, 2026-07-06]**
 
-본문에 **의뢰인-변호사 카톡 대화 시나리오**가 있을 때 대화 재현 카드.
+> **v1.8.1 (2026-07-06) 부터 은퇴 (사용자 확정 결정).** 신규 trigger 금지 — `skills/meta/slot_selection.md` 에서 슬롯 선택 차단됨.
+> - **은퇴 사유**: (a) 채팅 스크린샷은 텍스트 과다 — 블로그 이미지 방향("환기하되 몰입을 깨지 않기")과 불일치. (b) vision 검수 `text_rule=zero` (`tools/llm/image_review.py:52`) 와 모순 — 텍스트 사실 카드인데 텍스트 검출 = 100% 폐기, gpt-image thinking ($0.25/장) 생성 비용만 소모.
+> - **정의 보존**: `plan_history.md` §1.4. 부활 조건 (text-fact AI 카드 활성화 + `text_rule=factual` 분기 구현) 도 거기 기록.
+> - **코드**: illustration 선례대로 backwards compat 유지 (`orchestrator.py` SUPPORTED_TYPES/AI_CARD_TYPES 잔존) — 즉시 삭제 X.
+
+본문에 **의뢰인-변호사 카톡 대화 시나리오**가 있을 때 대화 재현 카드. *(이하 legacy 정의 — 신규 사용 금지)*
 
 ## When to use
 - 본문에 **의뢰인-변호사 채팅 시나리오**가 직간접 형태로 있음 ("Q: ~ A: ~", "의뢰인이 물어봅니다: ~")

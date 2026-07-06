@@ -5,6 +5,8 @@
 2. 그래도 실패: 입력 수정 후 1회 재시도 (prompt_review가 자동 수정 시도한 결과로)
 3. 그래도 실패: 슬롯을 `failed`로 마킹, 다음 슬롯 진행
 4. 슬롯당 최대 시도 = 3 (첫 시도 + 재시도 2회) — `tools/limits.py:PER_SLOT_ATTEMPTS` 단일 source (Phase 2 진입 전 신설)
+5. AI 카드 vision 검수 fail/예외는 **retry 1회 hard cap** (plan §14.4, `orchestrator.py` `vision_retry_used`) — 소진 후에도 fail이면 슬롯 폐기
+6. 데이터 결함성 예외 (`ChartDataError`/`ValueError`/`JinjaUndefinedError`/`KeyError`/`BlockNotFoundError`/`AncestorMismatchError`)는 같은 입력 재시도가 무의미 → **즉시 폐기** (재시도 X, §19.18)
 
 ## 페이지 status 룰 (운영 컨벤션)
 - 모든 슬롯 성공 (또는 슬롯 0개) → `발행 필요`
@@ -17,10 +19,9 @@
   - 이력 있으면 Phase 1엔 skip + warning 로그
   - Phase 3+에서 운영자 의도 재처리 가드 강화 (기존 image block 제거 후 진행)
 
-## 비용 가드 (plan §13 v1.2)
-- **페이지당 cap (Phase 1 임시)**: `$1.00` — 실측 ~$0.70 반영
-- **페이지당 목표 (Phase 2 안정화 후)**: `$0.30` — page_text 압축 + auto-mode 끄기로 달성
-- **런당 cap**: `$3.00` — Phase 2 batch 진입 시 누적 추적 (`RunBudget`)
+## 비용 가드 (plan §6)
+- **상수값 SSOT는 `tools/limits.py`** — `PER_PAGE_CAP_USD` / `PER_PAGE_TARGET_USD` / `PER_RUN_CAP_USD` / `PER_SLOT_COST_CAP_USD`. 본 문서에 숫자 복사 X (drift 방지 — 2026-07-06 구식 값 $1.00/$3.00 방치 사례로 원칙 확정).
+- 안정화 목표(`PER_PAGE_TARGET_USD`) 복귀 시점/조건은 plan §10 미결정 참조.
 - 초과 시 즉시 `stop_and_log` — 진행 중 슬롯 폐기, 페이지 `이미지 작업 중`으로 마킹.
 
 ## 로그 기록 룰 (plan §19.5 강화)

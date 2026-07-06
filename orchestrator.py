@@ -66,6 +66,8 @@ logger = logging.getLogger(__name__)
 # v1.6.1: Phase 3 감성형 카드 (illustration / kakao_dialogue) 추가.
 # v1.8 Phase 4.2 (2026-05-15): ai_visual 추가 — skills/visual_styles/*.md 기반 라이브러리 카드.
 # illustration 은 backwards compat 유지 (ai_visual + point_color_line 으로 점진 흡수).
+# v1.8.1 (2026-07-06): kakao_dialogue 은퇴 (plan_history §1.4 — 텍스트 과다 + text_rule=zero 모순).
+# illustration 선례대로 backwards compat 유지 — 신규 trigger 는 slot_selection.md 단에서 차단.
 SUPPORTED_TYPES = {
     "simple_table", "chart", "comparison_table", "timeline", "key_points_card",
     "illustration", "kakao_dialogue", "ai_visual",

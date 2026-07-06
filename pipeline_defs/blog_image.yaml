@@ -1,6 +1,8 @@
 # 블로그/웹 페이지 한 건의 이미지를 생성·배치한다.
-# Phase 3 v1.6.4: 정보형 5종 (simple_table, master_chart line/bar/donut/pie,
-# comparison_table, key_points_card, timeline) + 감성형 2종 (illustration, kakao_dialogue) 활성.
+# v1.8.1 (2026-07-06): 정보형 5종 (simple_table, master_chart line/bar/donut/pie,
+# comparison_table, key_points_card, timeline) + 감성형 1종 (ai_visual) 활성.
+# deprecated: illustration (v1.8 — ai_visual 흡수), kakao_dialogue (v1.8.1 은퇴 — plan_history §1.4).
+# 둘 다 backwards compat path 만 유지, 신규 trigger 는 slot_selection 단에서 차단.
 name: blog_image
 version: 1.1.0
 description: 블로그/웹 페이지 한 건의 이미지를 생성·배치한다
@@ -18,8 +20,11 @@ stages:
     description: |
       본문 블록을 읽고 image_slots 결정 (0개도 가능, 보통 1-3개).
       각 슬롯: { type, sub_type?, position_after_block_id, extracted_data }
+      (v1.8.2 — LLM 출력은 position_after_block_index(정수), analyze_content가
+       idx→block_id 변환 후 전달. 환각 원천 차단, plan §5)
       활성 type: simple_table | chart(sub_type=line|bar|donut|pie) | comparison_table |
-                key_points_card | timeline | illustration | kakao_dialogue.
+                key_points_card | timeline | ai_visual.
+      deprecated (신규 trigger X): illustration, kakao_dialogue.
 
   - name: generate_per_slot
     foreach: image_slots
@@ -46,8 +51,9 @@ stages:
       - name: review_image
         skill: meta/image_review.md
         description: |
-          Phase 1 = 형식 검증만 (파일 존재, 크기, 사이즈).
-          vision OCR 검사는 Phase 2에서.
+          형식 검증 (파일 존재, 크기 ≥ 1KB) + AI 카드만 vision 검수
+          (text_rule=zero, Phase 4.3 — tools/llm/image_review.py).
+          정보형 5종은 vision skip (template 렌더 — 텍스트 환각 위험 0).
         on_fail:
           - regenerate (max 1 회) per regen_policy.md
           - if still fail: mark slot as `failed`, continue
@@ -70,11 +76,10 @@ stages:
       1개 이상 슬롯 failed → "이미지 작업 중"
       슬롯 0개 → "발행 필요"
 
-# 비용 가드 (plan §13 v1.2 / regen_policy.md)
-# 모든 값은 Phase 2 진입 전 `tools/limits.py` 단일 source로 추출 예정.
+# 비용 가드 — 상수값 SSOT는 tools/limits.py (plan §6). 본 yaml에 숫자 복사 X.
+# (drift 방지 — 2026-07-06 구식 값 $1.00/$3.00이 실값 $2.50/$8.00과 어긋난 채 방치된 사례로 원칙 확정)
 limits:
-  per_page_cap_usd: 1.00     # Phase 1 임시 (실측 ~$0.70 반영). 안정화 후 0.30 복귀 목표.
-  per_page_target_usd: 0.30  # Phase 2 목표 (page_text 압축 + auto-mode 끄기 후)
-  per_run_cap_usd: 3.00      # batch 누적 (Phase 2 cron 진입 시 RunBudget로 추적)
-  per_slot_attempts: 3       # 첫 시도 + 재시도 2회
-  max_user_prompt_chars: 20000  # CLI argv 한계. 초과 시 H2 청크 fallback (plan §19.8)
+  source: tools/limits.py
+  # 관련 상수: PER_PAGE_CAP_USD / PER_PAGE_TARGET_USD / PER_RUN_CAP_USD /
+  #           PER_SLOT_COST_CAP_USD / PER_SLOT_ATTEMPTS /
+  #           MAX_USER_PROMPT_CHARS / MAX_BLOCKS_PROMPT_CHARS (§19.8 압축 진입 임계)

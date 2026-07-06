@@ -6,6 +6,7 @@
 본 archive에 들어가는 것:
 - Changelog v0.1 ~ v1.6.3 (현재 v1.6.4만 plan 본문에 유지)
 - Phase 4 검토 카드 v1.5 정의 (stat_highlight, document_excerpt) — Phase 4 진입 시 복원 가능
+- 은퇴 카드 정의 (kakao_dialogue v1.6.2 — v1.8.1 은퇴)
 - Paper-only 운영 가드 (§19.10/14/16/17 풀 spec) — cron 무인 가동 가정용, 운영자 검수 단계엔 paper
 - Phase 2 (§20) / Phase 3 (§21) 진입 체크리스트 — 이미 통과된 게이트
 
@@ -87,6 +88,53 @@ AI (gpt-image thinking) — Image 6 톤 (warm off-white 종이, serif 본문, br
 - **webtoon**: 한국 웹툰 다컷 (2-4컷) 내러티브. 텔링 강. AI gpt-image thinking. 텍스트 정확성 검증 복잡.
 - **app_ui_mockup**: 앱 UI mockup. use case 좁음. 법률 앱·서비스 콘텐츠 한정.
 
+### 1.4 kakao_dialogue (v1.6.2 정식 정의, v1.8.1 은퇴 — 2026-07-06)
+
+본문에 의뢰인-변호사 카톡 대화 시나리오가 있을 때 대화 재현 카드. Phase 3 v1.6.1 신설, 운영 trigger 0건인 채 v1.8.1 에서 은퇴.
+
+**은퇴 사유 (v1.8.1, 사용자 확정 결정 2026-07-06)**:
+- **방향성 불일치** — 블로그 이미지는 "환기하되 몰입을 깨지 않아야" 하는데 카톡 채팅 스크린샷은 텍스트 과다로 몰입 저해 (텍스트 많은 이미지 지양 원칙과 충돌).
+- **text_rule 모순** — kakao 는 텍스트 사실 카드인데 vision 검수 `_resolve_text_rule` 이 `text_rule="zero"` 고정 (`tools/llm/image_review.py:52`) → 텍스트 검출 = 100% 폐기. gpt-image thinking ($0.25/장) 생성 비용만 소모하는 구조.
+- 운영 trigger 0건 — §19.11 kakao OCR Levenshtein 검증도 착수 전 (paper-only 상태 그대로 obsolete).
+
+**처리 방식 (illustration 선례)**: 즉시 코드 삭제 X. `orchestrator.py` `SUPPORTED_TYPES`/`AI_CARD_TYPES` backwards compat 유지, 신규 trigger 는 `skills/meta/slot_selection.md` 단에서 차단. `skills/image_types/kakao_dialogue.md` 는 deprecated 헤더로 보존.
+
+```markdown
+# kakao_dialogue
+
+## When to use
+- 본문에 의뢰인-변호사 채팅 시나리오가 직간접 형태로 있음 ("Q: ~ A: ~", "의뢰인이 물어봅니다: ~")
+- 본문 톤이 "친구 같은 상담" / "쉬운 진입" / "익숙한 매체" 강조할 때
+- 4-8 메시지 분량 (왕복 2-4회). 더 길면 글로 풀어쓰기 권장.
+- 금지: 본문에 대화 시나리오가 없는데 카톡으로 만들어내기 (환각). 절차/체크리스트는 timeline/key_points_card.
+
+## Generation method
+AI (gpt-image thinking, quality=high) — ~$0.25/장 @ 1024x1536. 텍스트 정확성 필수라 thinking 모드.
+
+## Style (v1.6.1 reference 기반)
+- 자연어 키워드: Korean KakaoTalk chat screenshot, Samsung Android style. Chat area only (no status bar, no keyboard). Header at top with back arrow, title, search/menu icons. Yellow self-bubbles aligned right (no avatar). White other-bubbles aligned left with pastel circular avatars. Light blue chat background, Korean Pretendard font feel.
+- reference: `reference_library/kakao_dialogue/` (`kakao talk.webp` 기반 시드)
+
+## Variables
+- title (str, 옵션): 카드 상단 라벨. 예: "의뢰인의 첫 질문, 변호사의 답변"
+- messages (list, 필수): [{sender_label, text, time?}, ...] — 본문 대화 1자 변경 X
+  - sender_label: "의뢰인" / "변호사" / "상담사" 등 본문 인용대로
+  - text: 메시지 본문 그대로
+  - time (옵션): "오전 9:10" 형식
+- source (str, 옵션): "본 사연은 실제 의뢰인 사연을 각색했습니다" 등
+- footnote (str, 옵션)
+- alt_text (str, 필수): 한국어 80자 이하. 패턴: "[주제] 의뢰인-변호사 상담 발췌"
+
+## Data validation (CRITICAL — 사실 정확성 절대 룰 #1)
+- messages[i].text는 본문 1자도 변경 X — AI 환각 절대 금지.
+- title은 본문 사실 안에서 합성 OK.
+- source는 본문 표기 그대로 또는 운영 기본 문구.
+- image_review vision OCR로 카톡 버블 텍스트 추출 → messages[i].text와 Levenshtein distance ≤ 2 검증. 초과 시 retry 1회 → 그래도 초과면 슬롯 폐기 (§19.11 — 미구현인 채 은퇴).
+- 변호사법 §23 검사 — "100% 승소" / "유일한" 같은 표현이 메시지 안에 있으면 슬롯 폐기.
+```
+
+부활 조건: text-fact AI 카드 계열 (document_excerpt / webtoon) 활성화 결정 시 §19.11 OCR 검증 인프라와 함께 재검토. 부활 시 `_resolve_text_rule` 의 zero 고정 해제 (`text_rule=factual` 분기 구현) 가 prerequisite.
+
 ---
 
 ## 2. Paper-only 운영 가드 풀 spec
@@ -97,14 +145,16 @@ AI (gpt-image thinking) — Image 6 톤 (warm off-white 종이, serif 본문, br
 - upload 성공 → insert_image_block 실패 N회 → file_upload_id가 1시간 뒤 자동 archive (Notion 정책). 비용 누수 없음.
 - 단 슬롯 시도 N회 = upload N회. 첫 upload만 보존하고 retry는 insert만 재시도하면 효율적.
 
-### §19.11 AI 카드 OCR 사실 검증 (kakao_dialogue 부분 미구현)
-- **카드 종류별 분기 (v1.6)**:
+### §19.11 AI 카드 OCR 사실 검증 — **obsolete (v1.8.1, 2026-07-06 kakao_dialogue 은퇴)**
+- **obsolete 사유**: 유일한 활성 텍스트 사실 AI 카드였던 kakao_dialogue 이 은퇴 (§1.4) → 검증 대상 0. 활성 AI 카드 (ai_visual) 는 전부 `text_rule=zero` 로 §19.16 vision_review 가 cover.
+- **부활 조건**: text-fact AI 카드 (archive `document_excerpt` / `webtoon`) 활성화 시 아래 spec 그대로 복원 검토.
+- **(보존) 카드 종류별 분기 (v1.6)**:
   - **kakao_dialogue / document_excerpt** (텍스트 사실 카드):
     - vision OCR로 결과 이미지 한국어 텍스트 추출
     - extracted_data.messages[i].text / excerpt / court 등 "사실 그 자체" 필드와 Levenshtein distance 계산 (`rapidfuzz`)
     - 거리 ≤ 2자: 통과. > 2자: retry 1회 → 슬롯 폐기 + 로그.
   - **illustration**: OCR 검증 면제 (텍스트 0이 정상). 대신 §19.16 텍스트 감지 검증.
-- **현재 상태**: rapidfuzz 의존성 추가됨, kakao_dialogue OCR 검증 코드 미구현. kakao trigger 시 추가.
+- **은퇴 시점 상태**: rapidfuzz 의존성만 추가됨, OCR 검증 코드 미구현 (paper-only 인 채 obsolete).
 
 ### §19.14 cron 연속 실패 누적 알림 (paper, Phase 3 cron 가동 후 권장)
 - **위험**: cron 가동 중 N일 연속 1건도 처리 안 됨 → 운영자 인지 지연.
@@ -131,7 +181,7 @@ AI (gpt-image thinking) — Image 6 톤 (warm off-white 종이, serif 본문, br
   - 슬롯 N개 중 정보형 0 + 감성형 N개: warning + slot_selection 재호출 1회
   - 같은 카드 타입 3개+ 연속: warning + 운영자 검수 권장 표시
   - **같은 `visual_style` 2개+ 연속 (v1.8 신규)**: ai_visual 슬롯 2개가 동일 visual_style 일 때 허용 여부 Phase 4.2 Do 결정
-  - kakao_dialogue 2개+: 1개만 남기고 폐기
+  - ~~kakao_dialogue 2개+: 1개만 남기고 폐기~~ (v1.8.1 kakao 은퇴로 obsolete — §1.4)
 - **현재 상태**: LLM 이 슬롯 결정 시 mix 룰 markdown 으로 안내됨. 코드 가드 미구현. **Phase 4.2 진입 트리거 — `skills/meta/slot_selection.md` mix 룰 갱신 + orchestrator 슬롯 3 cap 가드 추가 (plan §14.5)**.
 
 ---

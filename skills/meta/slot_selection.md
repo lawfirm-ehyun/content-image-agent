@@ -1,4 +1,4 @@
-# Slot Selection (v1.8.5 Phase 4.2)
+# Slot Selection (v1.8.7 — 위치 필드 position_after_block_index 전환)
 
 본문 블록을 분석해서 페이지 전체에 어떤 image_type 슬롯을 어디에 넣을지 결정한다.
 0개도 OK이지만 이현 콘텐츠는 보통 2000자+이라 0개 결정은 거의 없을 것.
@@ -11,11 +11,11 @@
 |---|---|---|---|
 | **정보형** | `simple_table` / `chart`(line·bar·donut·pie) / `comparison_table` / `key_points_card` / `timeline` | template | 본문 사실 시각화 |
 | **감성형 (텍스트 0)** | `ai_visual` (5 visual_style: point_color_line / miniature_stock / korean_court_scene / blueprint_poster / cinematic_three_frame) | AI (gpt-image) | 도입부 분위기 / 사용자 사연 / 한국 법원 풍경 / 추상 구조 환기 |
-| **감성형 (텍스트 사실)** | `kakao_dialogue` | AI (gpt-image thinking) | 본문 대화 시나리오 텔링 |
+| **감성형 [deprecated]** | `kakao_dialogue` (v1.8.1 은퇴, 2026-07-06 — 텍스트 과다로 블로그 이미지 방향 불일치 + vision `text_rule=zero` 모순으로 100% 폐기) | — | **trigger 금지** — 슬롯으로 선택하지 말 것 |
 | **감성형 [deprecated]** | `illustration` (단일 라인 스타일, v1.8 Phase 4.2 에서 ai_visual + point_color_line 으로 흡수) | AI (gpt-image instant) | legacy path만 — 신규 trigger 는 ai_visual 권장 |
 
 ### 사실 정확성 절대 룰 #1 — 카테고리 차등
-- **정보형 + kakao_dialogue**: 본문 그대로 (숫자/values/labels/messages 1자 변경 X)
+- **정보형**: 본문 그대로 (숫자/values/labels 1자 변경 X)
 - **ai_visual + illustration**: scene/mood/accent_target은 본문 사실 안에서 합성 OK (라벨링·재표현). 이미지 안 텍스트 0 강제 (`text_rule=zero`, vision 검증).
 
 ---
@@ -121,7 +121,7 @@ extracted_data:
 **금지 케이스**:
 - 본문에 사연/장면/구조/대화·인물 시퀀스 묘사 없음 → ai_visual trigger X (환각 방지)
 - 텍스트 다수 필요 → 정보형 카드 (template)
-- 사실 인용 필요 → kakao_dialogue 또는 정보형 simple_table
+- 사실 인용 필요 → 정보형 simple_table
 - 같은 페이지 ai_visual 2개+ 시 visual_style 연속 동일 → 톤 단조 (별 visual_style 또는 슬롯 분할)
 
 **extracted_data** (analyze prompt 응답):
@@ -138,26 +138,11 @@ extracted_data:
 
 본문에 도입부 사용자 사연 패턴이 있어도 ai_visual 우선. ai_visual 매칭 실패 시 fallback illustration trigger 도 금지 — 환각 방지 (slot 폐기).
 
-### `kakao_dialogue` — 의뢰인-변호사 카톡 대화
+### `kakao_dialogue` [deprecated v1.8.1, 2026-07-06] — **trigger 금지**
 
-본문에 다음 패턴이 있으면 후보:
-
-- **본문 안 의뢰인-변호사 채팅 시나리오**
-  - "Q: ~ A: ~" 형식, "의뢰인이 물어봅니다", 따옴표 + 인용된 대화
-  - 4-8 메시지 분량 (왕복 2-4회). 더 길면 글로 풀어쓰기 권장.
-- **금지 케이스**:
-  - 본문에 대화 시나리오 없는데 카톡으로 만들기 X (환각)
-  - 절차/체크리스트 → timeline / key_points_card
-  - 한 페이지에 kakao_dialogue 2개+ → 톤 과잉, 1개만
-
-**extracted_data**:
-- `title` (str, 옵션): 카드 상단 라벨. 예: "의뢰인의 첫 질문, 변호사의 답변"
-- `messages` (list): `[{sender_label, text, time?}, ...]` — **본문 대화 1자 변경 X** (OCR Levenshtein ≤ 2 검증)
-  - `sender_label`: "의뢰인" / "변호사" / "상담사" 등 본문 인용대로
-  - `text`: 메시지 본문 그대로
-  - `time` (옵션): "오전 9:10" 형식
-- `source` (str, 옵션): "본 사연은 실제 의뢰인 사연을 각색했습니다" 등
-- `footnote` (str, 옵션)
+> **은퇴. 슬롯으로 선택하지 말 것.** 사유: (a) 채팅 스크린샷은 텍스트 과다로 블로그 이미지 방향("환기하되 몰입 안 깨기") 불일치 (b) vision 검수 `text_rule=zero` 와 모순 → 생성물 100% 폐기, thinking $0.25/장 비용만 소모. 정의 보존 → `plan_history.md` §1.4.
+>
+> 본문에 의뢰인-변호사 대화 시나리오가 있어도 카드 대체 없음 — 대화는 본문 텍스트로 두는 것이 원칙. 도입부 분위기 환기가 필요하면 `ai_visual` 검토.
 
 ---
 
@@ -168,7 +153,7 @@ extracted_data:
 - **4개+ trigger 시**: 우선순위 낮은 1개 폐기. 우선순위 룰:
   - (a) 정보형 0 시 정보형 1개 보장 (감성형 1-2 + 정보형 1 = 3 우선)
   - (b) 정보형 ≥ 2 + 감성형 0 → ai_visual 1개 추가 trigger 후보 (감성 mix 권장)
-  - (c) kakao_dialogue 우선, ai_visual 차순, 정보형 동등 — 4번째 슬롯은 데이터 신호 약한 카드부터 폐기
+  - (c) ai_visual 우선, 정보형 동등 — 4번째 슬롯은 데이터 신호 약한 카드부터 폐기
 - **콘텐츠 종속 — 강제 X**:
   - 도입 사연이 약한 페이지 → 감성형 생략 OK (정보형만 2-3개)
   - 데이터 풍부 페이지 → 정보형 3개도 허용 (단 3 cap 안에서)
@@ -177,7 +162,7 @@ extracted_data:
   - 감성형만 (정보형 0): 정보 콘텐츠로서 가치 결여
   - 정보형만 (감성형 0) 강제: 콘텐츠가 정보 위주면 OK, 강제 추가 X
   - 같은 카드 타입 3개 연속 (예: simple_table 3개): 시각 단조로움
-  - kakao_dialogue 2개+ in 한 페이지: 톤 과잉
+  - kakao_dialogue: **은퇴 카드 — 선택 자체 금지** (v1.8.1)
   - ai_visual 2개 + 동일 visual_style: 톤 단조 (별 visual_style 또는 슬롯 분할)
 
 ---
@@ -198,10 +183,11 @@ extracted_data:
 
 ## 위치 결정
 
+- **출력 필드 (v1.8.7)**: `position_after_block_index` — BLOCKS 배열에서 이미지가 들어갈 위치 **직전 block 의 `idx` 값 (정수)**. block UUID 는 출력하지 말 것 (BLOCKS 에 UUID 없음 — idx→block_id 변환은 코드가 수행).
 - **정보형 카드**: 해당 데이터가 등장하는 H2 섹션의 **첫 단락 직후**. 첫 단락이 50자 미만이면 다음 단락 후.
 - **ai_visual**: 페이지 도입부 H2 섹션 첫 단락 직후 (도입 사연·구조·법원 풍경 등 환기) — 또는 콘텐츠 전환부 H2 헤딩 직후. `visual_style=cinematic_three_frame` 은 2:3 portrait 라 도입부 헤더 직후 임팩트 포지션 권장.
 - **illustration** [deprecated]: ai_visual + point_color_line 으로 라우팅 권장. legacy path 진입 시 위치는 ai_visual 과 동일.
-- **kakao_dialogue**: 본문 대화 인용 직후.
+- **kakao_dialogue** [deprecated v1.8.1]: trigger 금지 — 위치 룰 없음.
 
 ## 슬롯 개수
 
@@ -214,7 +200,7 @@ extracted_data:
 
 ### title / headers / cells 룰 — v1.3 (직관 합성 허용)
 
-모든 슬롯의 `extracted_data.title`은 **반드시** 채울 것 (illustration·kakao_dialogue는 `title` optional). 비우지 말 것.
+모든 슬롯의 `extracted_data.title`은 **반드시** 채울 것 (ai_visual 은 `title` 필드 없음, deprecated illustration 은 legacy optional). 비우지 말 것.
 
 **공통 룰 (title / headers / cells)**:
 - 본문 사실 안에서 직관 합성 OK — 축약·재표현·라벨링 허용
@@ -255,7 +241,6 @@ extracted_data:
 | `simple_table` / `comparison_table` | "[주제] [N]가지 [축]" | "세입자 권리 4가지 핵심 정리" / "협의 재판 이혼 절차 비교" |
 | `key_points_card` | "[주제] 핵심 [N]가지" | "음주운전 면허정지 대응 핵심 3가지" |
 | `timeline` | "[주제] [N]단계 절차" | "상속 분쟁 조정 5단계 절차" |
-| `kakao_dialogue` | "[주제] 의뢰인-변호사 상담 발췌" | "음주측정 0.08 면허정지 상담 발췌" |
 | `ai_visual` | scene 본문 합성 (기존 룰) | "야간 도로변 음주측정 직장인 사연" |
 
 **사실 정확성** (절대 룰 #1, 라벨링 영역): 카드 데이터·본문 안 사실 안에서 합성 OK. 본문에 없는 사실/숫자/주체 X. review.py 가 사실 일치 + 길이 + target keyword + 자기지시 + 본문 통째 복붙 검사.
@@ -273,7 +258,7 @@ extracted_data:
 image_slots:
   # ai_visual (감성형, 도입부 — v1.8 Phase 4.2 신설)
   - type: ai_visual
-    position_after_block_id: <block_uuid>
+    position_after_block_index: 1   # BLOCKS 배열의 직전 block idx (정수)
     extracted_data:
       visual_style: "point_color_line"
       scene: "야간 공원에서 음주측정 받는 30대 직장인"
@@ -284,7 +269,7 @@ image_slots:
   # chart (정보형, 시계열)
   - type: chart
     sub_type: line
-    position_after_block_id: <block_uuid>
+    position_after_block_index: 9
     extracted_data:
       title: "사이버명예훼손 발생 추이"
       labels: ["2021", "2022", "2023", "2024"]
@@ -296,7 +281,7 @@ image_slots:
 
   # simple_table (정보형)
   - type: simple_table
-    position_after_block_id: <block_uuid>
+    position_after_block_index: 17
     extracted_data:
       title: "세입자의 4가지 권리"
       headers: ["권리", "핵심 내용"]
@@ -305,31 +290,14 @@ image_slots:
         - ["우선변제권", "경매에서 다른 채권자보다 먼저 보증금 회수"]
       highlight_first_col: true
       alt_text: "세입자 권리 4가지, 대항력 우선변제권 등 핵심"
-
-  # kakao_dialogue (감성형, 대화)
-  - type: kakao_dialogue
-    position_after_block_id: <block_uuid>
-    extracted_data:
-      title: "의뢰인의 첫 질문"
-      messages:
-        - sender_label: "의뢰인"
-          text: "변호사님, 음주측정 결과가 0.08이 나왔어요. 어떻게 해야 하나요?"
-          time: "오전 9:10"
-        - sender_label: "변호사"
-          text: "0.08은 면허 정지 구간입니다. 우선 진술서 작성 전에 상담부터 받으시는 게 좋습니다."
-          time: "오전 9:12"
-      source: "본 사연은 실제 의뢰인 사연을 각색했습니다"
-      alt_text: "음주측정 0.08 면허정지 의뢰인-변호사 상담 발췌"
 ```
 
 ---
 
 ## 사실 정확성 (절대 룰 #1) — v1.8 카테고리 차등
 
-- **사실 그 자체 (정보형 + kakao_dialogue 텍스트 필드)**: 1자도 변경 X. 본문에 명시된 값/대화 그대로. 가짜 출처 X.
+- **사실 그 자체 (정보형)**: 1자도 변경 X. 본문에 명시된 값 그대로. 가짜 출처 X.
   - 정보형: 숫자 / values / labels / point_labels / source
-  - kakao_dialogue: messages[i].text, sender_label
-  - kakao_dialogue OCR 검증: `tools/llm/image_review.py` vision으로 messages OCR 추출 → Levenshtein distance ≤ 2 검증. 초과 시 retry 1회 → 슬롯 폐기.
 - **라벨링·재표현 (정보형 title/headers/cells, ai_visual + illustration scene/mood/accent_target)**: 본문 사실 안에서 직관 합성 OK. 본문에 없는 사실/주체 삽입 X. title은 본문 H2/H3와 완전 동일만 X.
 - **ai_visual visual_style 매칭**: 본문 톤 + use_when 패턴 명확 매칭만. 매칭 불확실 시 슬롯 폐기 (임의 default 금지).
 - **ai_visual + illustration 이미지 안 텍스트**: 0 강제 (`text_rule=zero`). Phase 4.3 vision 인프라 (§19.16, `tools/render/vision_review.py`) 완성 후 픽셀 ≥ 1% 또는 OCR token ≥ 3개 → retry 1회 → 슬롯 폐기.

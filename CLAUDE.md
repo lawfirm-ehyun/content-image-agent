@@ -14,11 +14,12 @@
 2. **변호사법 §23** — 절대성/마케팅 과장/시간 압박/비교 광고 표현 검출 시 슬롯 폐기. 상세는 `skills/style/ehyun_visual_guide.md`. **키워드 master는 `tools/compliance/keywords.py`** (v1.4 완료 — `tools/llm/review.py`의 1차 regex pass가 LLM 호출 전 자동 검사).
 3. **모바일 가독성 40px+** (v1.3 / v1.4 통일) — 카드 본문 텍스트 최소 40px (1200px 캔버스 기준). 1200px가 노션 모바일에서 30% 축소되어 표시 ~12px 보장. **출처/메타(footnote)는 모두 32px caption + neutral-500 통일** (v1.4 — 26px는 모바일 ~8px 가독 한계). plan §13 D안 참조.
 4. **Phase 점프 금지** — 게이트 통과 못한 단계 작업 X.
-5. **카드 라인업 — 정보/감성 mix (v1.6.1 사상)** — 페이지당 정보형(template) 1-2 + 감성형(AI) 1-2 mix 권장.
-   - **정보형 (사실 엄격, Phase 2 v1.4 5종)**: `simple_table`, `chart`(line/bar/donut/pie), `comparison_table`, `key_points_card`, `timeline`. **Phase 3에서 정보형 신설 X**.
-   - **감성형 (Phase 3 v1.6.1 신설 2종)**: `illustration`(라인 일러스트 단일 스타일 fix, AI instant, 텍스트 0 강제, OCR 면제) / `kakao_dialogue`(본문 대화, AI thinking, OCR Levenshtein ≤ 2 검증, `kakao talk.webp` reference 톤).
+5. **카드 라인업 — 정보/감성 mix (v1.8.1, 활성 6종)** — 페이지당 정보형(template) 1-2 + 감성형(AI) 1-2 mix 권장, 슬롯 3 cap hard.
+   - **정보형 (사실 엄격, Phase 2 v1.4 5종)**: `simple_table`, `chart`(line/bar/donut/pie), `comparison_table`, `key_points_card`, `timeline`. **정보형 신설 X**.
+   - **감성형 (활성 1종)**: `ai_visual`(v1.8 Phase 4.2 — `skills/visual_styles/` 5 스타일에서 LLM best fit, 텍스트 0 강제 `text_rule=zero`, vision 검증).
+   - **deprecated**: `illustration`(v1.8 — ai_visual + point_color_line 흡수) / `kakao_dialogue`(**v1.8.1 은퇴, 2026-07-06** — 채팅 스크린샷 텍스트 과다 = "환기하되 몰입 안 깨기" 방향 불일치 + vision `text_rule=zero` 모순으로 100% 폐기·thinking $0.25 비용만 소모. 정의 보존 → plan_history §1.4). 둘 다 코드 backwards compat 유지, 신규 trigger 는 slot_selection 단 차단.
    - **Phase 4 검토 archive**: `stat_highlight`(v1.6.1 폐기, v1.5 정의 보존), `document_excerpt`(v1.5 정의 보존), `webtoon`(한국 웹툰 다컷), `app_ui_mockup`.
-   - **mix 룰** (`skills/meta/slot_selection.md`): 정보형만/감성형만 X. 같은 카드 3연속 X. kakao 2개+ X. 콘텐츠 종속, 강제 X.
+   - **mix 룰** (`skills/meta/slot_selection.md`): 정보형만/감성형만 X. 같은 카드 3연속 X. 콘텐츠 종속, 강제 X.
 6. **에러 만나면 우회 X — 근본 원인 진단 → 기능 살리며 해결.**
 7. **drift 처리 룰** — 코드/스킬과 plan(SOT) 간 불일치 발견 시 **plan을 먼저 갱신**한 뒤 코드 동기화. CLAUDE.md는 압축 룰, plan(`ehyun-image-agent-plan_1.md`)은 사실 정의.
 8. **AI prompt 자연어 룰 (v1.6.2)** — gpt-image-2 등 최신 이미지 모델 prompt는 **자연어 키워드**로만 작성. 픽셀(`stroke 2px`)·hex(`#a91c51`)·CSS 토큰·"절대 금지" 같은 over-constraint 금지. 시각 톤은 (a) 자연어 스타일 키워드, (b) `reference_library/{card_type}/*` reference image input, (c) image_review 사후 검수로 보장. 단 **텍스트 사실 필드는 exact_korean_strings로 엄격 명시** — messages/excerpt/title 1자도 변경 X. 상세 plan §7.0 v1.6.2 사상.
@@ -89,14 +90,14 @@ Python 3.12 / uv / Playwright(Chromium-headless-shell) / Chart.js CDN / Pretenda
 - §3 cron 진입점 — `orchestrator.main()` argparse 분기 (인자 없음 sweep / `--mode list` / `--page-id+--source`) + `.github/workflows/cron.yml` 2-step matrix fan-out (v1.7.5-plan)
 
 **Phase 4 보강 — 2026-05-20 운영 1건 반영 ✅**:
-- §19.18 block_id 환각 사전 게이트 — `analyze_content.py`가 LLM 산출 `position_after_block_id`를 `compact_blocks` known-id set과 대조해 환각 UUID 슬롯 사전 drop
+- §19.18 block 위치 환각 원천 차단 (v1.8.2, 2026-07-06) — `analyze_content.py`가 LLM에 blocks를 UUID 없이 순번 `idx`로 제시, LLM은 `position_after_block_index`(정수)만 출력 → 코드가 block_id 변환 (범위 밖/비정수 drop, legacy UUID 출력은 known-id 게이트로 수용)
 - §19.18 retry whitelist 확장 — `insert_image_block`에 `BlockNotFoundError` / `AncestorMismatchError` dedicated exception 신설, `orchestrator.py:531` except 화이트리스트에 추가 → retrieve 404 / ancestor 불일치 시 헛재시도 (3회 × webp/upload) 즉시 차단
 
 **Phase 3 진입 전 — v1.6 정의, 코드 작업 예정**:
-- §19.11 AI 카드 OCR 사실 검증 — 카드 종류별 분기 (kakao_dialogue Levenshtein / illustration 면제)
+- ~~§19.11 AI 카드 OCR 사실 검증 (kakao Levenshtein)~~ — **obsolete (v1.8.1, 2026-07-06 kakao_dialogue 은퇴)**. text-fact AI 카드 (document_excerpt 등) 활성화 시에만 부활 검토 (plan_history §19.11)
 - §19.12 OpenAI rate limit / 429 backoff
 - §19.13 OpenAI 비용 cap (`PER_SLOT_COST_CAP_USD = 0.30`, anthropic/openai 분리)
 - §19.14 cron 연속 실패 누적 알림
 - §19.15 OpenAI key fail-fast + 에러 sanitize
 - §19.16 illustration 텍스트 환각 차단 (vision)
-- §19.17 mix 정책 위반 검증 (감성만/3연속/kakao 2개+)
+- §19.17 mix 정책 위반 검증 (감성만/3연속)

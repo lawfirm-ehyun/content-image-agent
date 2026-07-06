@@ -1,4 +1,4 @@
-# 이현 블로그 이미지 에이전트 — Plan (v1.8.0-plan)
+# 이현 블로그 이미지 에이전트 — Plan (v1.8.2-plan)
 
 > 노션 콘텐츠에 자동으로 이미지 카드 박는 에이전트.
 >
@@ -38,8 +38,8 @@ plan 안에서 자주 참조하는 핵심 4개:
   ┌──── [review_input: 본문 일치 + §23 검사] ────┐
   │                                              │
   │   template path                AI path       │
-  │   (chart / table /             (illustration /
-  │    timeline / key_points)       kakao_dialogue)
+  │   (chart / table /             (ai_visual —   │
+  │    timeline / key_points)       5 style)      │
   │        ↓                            ↓        │
   │   Playwright render          gpt-image API   │
   │        ↓                            ↓        │
@@ -64,7 +64,7 @@ plan 안에서 자주 참조하는 핵심 4개:
   - **`PER_RUN_CAP_USD` 의미 변화**: 기존 단일 job 에서는 블로그 + 웹 sweep 누적 cap 이었으나, matrix 에서는 **cell 1개당 cap** 으로 작동 (각 cell 이 별 process). 총 spend = pages × `PER_PAGE_CAP_USD` (worst case). max-parallel 5 + `_DEFAULT_BATCH_LIMIT = 5` per-DB 로 한 run 당 페이지 10개 cap 자연 제한.
   - 사용자 별 작업: GitHub repo Settings → Secrets and variables → Actions 에 secret 박기 (변경 없음).
 
-## 4. 카드 카탈로그 (활성 7종, v1.8 — illustration → ai_visual 전환 진행 중)
+## 4. 카드 카탈로그 (활성 6종, v1.8.1 — 감성형은 ai_visual 단일)
 
 | 카드 | 종류 | When | 상세 |
 |---|---|---|---|
@@ -74,13 +74,13 @@ plan 안에서 자주 참조하는 핵심 4개:
 | `key_points_card` | 정보형 template | 핵심 N가지 / 준비 서류 / 체크리스트 (3-5개) | [skill](skills/image_types/key_points_card.md) |
 | `timeline` | 정보형 template | 4-6 순차 단계 (법률 절차 / 소송 흐름) | [skill](skills/image_types/timeline.md) |
 | `ai_visual` ★ Phase 4.2 신설 | 감성형 AI | 도입부 사연/분위기 / 콘텐츠 전환부 호흡 분기. LLM 이 본문 보고 [Visual Styles Library](docs/visual_styles_library_v1.md) 5종 중 best fit 결정 | §14 + [docs/visual_styles_library_v1.md](docs/visual_styles_library_v1.md) |
-| `kakao_dialogue` | 감성형 AI thinking | 본문 카톡 대화 시나리오 재현 | [skill](skills/image_types/kakao_dialogue.md) |
+| ~~`kakao_dialogue`~~ deprecated (v1.8.1, 2026-07-06) | — | **은퇴** — (a) 채팅 스크린샷은 텍스트 과다로 블로그 이미지 방향("환기하되 몰입 안 깨기") 불일치 (b) vision 검수 `text_rule=zero` (`tools/llm/image_review.py:52`) 와 모순 → 텍스트 검출 시 100% 폐기, thinking $0.25/장 비용만 소모. 정의 보존 → plan_history §1.4 | plan_history §1.4 |
 | ~~`illustration`~~ deprecated (v1.8) | — | `ai_visual.visual_style=point_color_line` 로 흡수. 운영 인지 후 skill/code 제거 | §14.1 |
 
 **페이지당 mix 룰** → [CLAUDE.md](CLAUDE.md) 절대 룰 #5 + §14.5 슬롯 3 cap (v1.8 하향). mix 알고리즘 → `skills/meta/slot_selection.md` (Phase 4.2 Do 단계 갱신 예정).
 
 **카드 카테고리별 사실 정확성**:
-- 정보형 + kakao_dialogue: 본문 1자 변경 X (절대 룰 #1 엄격)
+- 정보형: 본문 1자 변경 X (절대 룰 #1 엄격)
 - ai_visual: scene/mood/accent_target 은 합성 OK. 이미지 안 텍스트 0 강제 (vision 검증 = §19.16 Phase 4.3 진입 트리거).
 
 **Phase 4 검토 archive** (운영 데이터로 결정): `stat_highlight` (v1.5 정의 보존), `document_excerpt` (v1.5 정의 보존), `webtoon`, `app_ui_mockup`. spec → [plan_history.md](plan_history.md).
@@ -90,7 +90,7 @@ plan 안에서 자주 참조하는 핵심 4개:
 | 가드 | 코드 위치 | 사상 |
 |---|---|---|
 | **멱등성 + page try/except** | `orchestrator.py` (`get_logged_page_ids`, `process_database` try/except) | 동일 page_id 재처리 자동 skip + page-level 실패는 다음 페이지 진행 |
-| **block UUID 환각 검증 (사전 + 사후) + retry 차단** | 사전: `tools/llm/analyze_content.py` known-id 게이트 / 사후: `tools/notion/insert_image_block.py:_verify_ancestor` / retry: `orchestrator.py` 화이트리스트 (`BlockNotFoundError`, `AncestorMismatchError`) | analyze 가 환각 UUID 산출 → 사전 게이트가 drop. 사전 게이트 통과 후 retrieve 404/ancestor 불일치 → 사후 dedicated exception 으로 즉시 break (webp/upload 3회 헛비용 차단 — 2026-05-20 운영 1건 $0.10 누수 사례) |
+| **block 위치 환각 차단 (원천 + 사후) + retry 차단** | 원천: `tools/llm/analyze_content.py` — LLM 에 UUID 미노출, blocks 를 순번 `idx` 로 제시 → LLM 은 `position_after_block_index`(정수) 만 출력, 코드가 idx→block_id 변환 (범위 밖/비정수 drop). legacy `position_after_block_id` 출력은 known-id 게이트로 수용 (전환기 안전망) / 사후: `tools/notion/insert_image_block.py:_verify_ancestor` / retry: `orchestrator.py` 화이트리스트 (`BlockNotFoundError`, `AncestorMismatchError`) | LLM 이 32자 UUID 를 베끼는 구조 자체가 환각 원인 (2026-05-20 운영 1건 $0.10 누수 + 이후 산발 재발) → v1.8.2 인덱스 선택으로 원천 차단. 부수 효과: prompt 에서 UUID 제거 (블록당 ~45 chars 절약, §19.8 압축 진입 빈도 ↓). 사후 ancestor 검증은 안전망 유지 |
 | **API rate limit backoff** | `tools/notion/_retry.py` (Notion) + `tools/image/gpt_image_2.py` (OpenAI, tenacity) | 429/5xx 자동 지수 재시도 + 페이지 사이 0.5s sleep |
 | **비용 cap (페이지/런/슬롯/analyze/review)** | `tools/limits.py` + `tools/budget.py` | RunBudget 누적, cap 초과 시 즉시 break + 슬롯 폐기 |
 | **§23 컴플라이언스** | `tools/compliance/keywords.py` (1차 regex) + `tools/llm/review.py` (2차 LLM) | LLM 호출 전 키워드 차단 (호출당 $0.30 절약) + 본문 일치 + §23 LLM 재검토 |
@@ -158,7 +158,6 @@ plan 안에서 자주 참조하는 핵심 4개:
 | cron schedule 활성화 (workflow_dispatch → schedule) | `cron.yml` 2-step matrix fan-out 작성 완료 (2026-05-14, `workflow_dispatch` only — §3 참조). `schedule` 라인 추가는 운영자 검수 부담 결정과 함께 별 트랙. |
 | chatgpt-image-latest 비교 | OpenAI organization verification 완료 후 (15분 propagate) |
 | gpt-image-1.5 콘텐츠별 라우팅 | 5/12 비교에서 라인 일러스트 톤 최고였음. 운영 데이터로 결정. Visual Styles Library (§14.2) `point_color_line` 운영 1주 후 비교 데이터 확보. |
-| kakao_dialogue OCR Levenshtein 검증 | kakao 실제 trigger 시 추가 (현재 0건). §12.6 subagent 활성화도 이 시점에 연동. §19.16 Phase 4.3 vision review 인프라와 연동. |
 | Phase 4 검토 카드 (stat_highlight / document_excerpt / webtoon / app_ui_mockup) 활성화 | 운영 데이터 + 콘텐츠 적합도. v1.8 `ai_visual` 가 일부 use-case 흡수 가능성 있어 활성화 보류. |
 | 페이지 cap $1.20 복귀 | analyze prompt 슬림 + slot_selection 다이어트 + **슬롯 3 cap (v1.8, §14.5)** 후 재측정. |
 | 실패 알림 채널 (이메일 → Slack/Discord) | 운영 안정화 후 |
@@ -214,7 +213,7 @@ v1.6.4까지 `tools/llm/_common.py`가 bundled `claude.exe` subprocess 호출 (�
 
 - ❌ **차트도 gpt-image-2로** — 환각/§23 검증 불가. plan_history v1.6.1 "62.5% → 65.2%" 사고 재발. 차트는 Chart.js 유지.
 - ❌ **table/key_points/timeline까지 1개 generic으로 통합** (`generic_infographic.html`) — DOM 본질이 다름 (각각 `<table>`, grid `<div>`, ordered steps). 합치면 슬롯 스키마 가드 깨지고 절대 룰 #1 회귀. *(단, 차트 4 sub-type 통합은 별개 — DOM 동일하므로 §12.2 Week 3a에서 실행)*
-- ❌ **illustration/kakao 갈아엎기** — v1.6.4에서 안정. 손대지 않음.
+- ❌ **illustration/kakao 갈아엎기** — v1.6.4에서 안정. 손대지 않음. *(역사 기록 — v1.8 illustration → ai_visual 흡수, v1.8.1 kakao_dialogue 은퇴로 두 카드 모두 deprecated 됨)*
 
 ### 12.4 사전 가드
 
@@ -248,7 +247,7 @@ v1.6.4까지 `tools/llm/_common.py`가 bundled `claude.exe` subprocess 호출 (�
 
 claude-agent-sdk subagent는 자체 context 격리됨. 따라서:
 
-- **stateless task → subagent**: §23 키워드 regex pass (구현됨), 이미지 vision 사실 검증, OCR Levenshtein 검사 (미구현 — kakao 실제 trigger 시 활성화, §10 참조)
+- **stateless task → subagent**: §23 키워드 regex pass (구현됨), 이미지 vision 사실 검증, OCR Levenshtein 검사 (obsolete — v1.8.1 kakao_dialogue 은퇴, plan_history §19.11)
 - **stateful review → 메인 loop + hook**: "이 차트 에디토리얼 품질" 같은 원본 spec + 추론 맥락 필요한 평가
 
 처음부터 다 subagent로 빼지 말기 — context 부족으로 평가 부실 위험.
@@ -367,7 +366,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 
 ### 13.2 적용 범위
 
-7종 카드 모두 (`simple_table` / `chart` 4 sub-type / `comparison_table` / `key_points_card` / `timeline` / `ai_visual` / `kakao_dialogue`). 슬롯당 alt_text 1개.
+활성 6종 카드 모두 (`simple_table` / `chart` 4 sub-type / `comparison_table` / `key_points_card` / `timeline` / `ai_visual`). 슬롯당 alt_text 1개. *(v1.8.1 — `kakao_dialogue` 은퇴로 7종 → 6종)*
 
 ### 13.3 데이터 흐름
 
@@ -415,7 +414,6 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 | `simple_table` / `comparison_table` | "[주제] [N]가지 [축]" 예: "세입자 권리 4가지 핵심 정리" |
 | `key_points_card` | "[주제] 핵심 [N]가지" 예: "음주운전 면허정지 대응 핵심 3가지" |
 | `timeline` | "[주제] [N]단계 절차" 예: "상속 분쟁 조정 5단계 절차" |
-| `kakao_dialogue` | "[주제] 의뢰인-변호사 상담 발췌" 예: "음주운전 측정 0.08 상담 발췌" |
 | `ai_visual` | 기존 룰 (scene 본문 합성) 유지 + 80자 / target keyword 1회 정합화 |
 
 ### 13.7 작업 항목 (예상 1일)
@@ -574,8 +572,8 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 
 **범위 (MVP 단순화, 2026-05-18 사용자 컨펌)**: §19.16 (plan_history) paper-only → 실구현 격상. AI 카드 산출물을 vision LLM 이 평가 — **text_rule=zero 단일 분기**:
 - 텍스트 검출 (스타일 `text_rule=zero` 인 경우) → 텍스트 픽셀 ≥ 1% 또는 OCR token ≥ 3개 → retry 1회 → 폐기
-- §23 키워드 검사는 `tools/compliance/keywords.py` + `tools/llm/review.py` 1차 pass 에서 본문 텍스트 단계에 작동 — **vision layer 중복 X**. AI 카드 prompt 는 본문 사실만 사용 (정보형 5종은 본문 사실 직접 인용, 감성형 ai_visual 은 scene/mood 합성, kakao_dialogue 는 본문 messages 인용) — keywords 검사는 본문 단계로 충분.
-- `kakao_dialogue` 한글 정확성 (Levenshtein ≤ 2) — kakao trigger 0건이라 **paper-only 유지** (§19.11 보류 row 참조). 실제 trigger 시 §19.11 + vision_review 본문에 분기 추가.
+- §23 키워드 검사는 `tools/compliance/keywords.py` + `tools/llm/review.py` 1차 pass 에서 본문 텍스트 단계에 작동 — **vision layer 중복 X**. AI 카드 prompt 는 본문 사실만 사용 (정보형 5종은 본문 사실 직접 인용, 감성형 ai_visual 은 scene/mood 합성) — keywords 검사는 본문 단계로 충분.
+- ~~`kakao_dialogue` 한글 정확성 (Levenshtein ≤ 2)~~ — **obsolete (v1.8.1, 2026-07-06 kakao_dialogue 은퇴)**. §19.11 kakao 분기 폐지. text-fact AI 카드 (archive `document_excerpt` 등) 활성화 시에만 부활 검토 → plan_history §19.11.
 
 **vision 모델 — Claude Sonnet 4.6 vision (사용자 컨펌 2026-05-14) / vision input path — anthropic SDK 별 path (사용자 컨펌 2026-05-18)**:
 - **path**: anthropic SDK 별 신설 — `claude-agent-sdk` 0.1.77 ContentBlock 에 ImageBlock 정의 부재 (`claude_agent_sdk/types.py:992-999` 확인, 2026-05-18). vision 은 plan §12 SDK 통일 결정과 직교. `anthropic.Anthropic().messages.create()` 직접 호출, multimodal content array (image base64 source) 표준 path. (A) streaming dict raw passthrough 미문서화 path 의존 위험 (0.1.78+ breakage) 회피 사유로 (B) 단독 채택.
@@ -717,6 +715,13 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 ---
 
 ## Changelog
+
+- **v1.8.2-plan** (2026-07-06): **block 위치 결정 — 인덱스 선택 방식 전환** (§19.18 후속, 환각 원천 차단). 배경: §19.18 사전 게이트는 사후 방어일 뿐 — LLM 이 32자 UUID 를 그대로 베끼는 구조 자체가 환각의 원인이고 운영에서 산발 재발. **해결**: `analyze_content` 가 LLM 에 blocks 를 UUID 없이 순번 `idx` 로 제시 → LLM 은 `position_after_block_index`(정수) 만 출력 → 코드가 idx→block_id 변환. 범위 밖/비정수 idx 는 기존 게이트와 동일하게 슬롯 drop + warning. legacy `position_after_block_id` 출력은 known-id set 검증 통과 시 수용 (전환기 안전망). 부수 효과: prompt 에서 UUID 제거 — 블록당 ~45 chars 절약 (§19.8 압축 모드 진입 빈도 ↓). **orchestrator 인터페이스 불변** — `slot["position_after_block_id"]` 소비 유지 (analyze 가 변환 완료 후 전달), 사후 가드 (`_verify_ancestor`, retry 화이트리스트) 그대로. **갱신 위치**: §5 가드 표 / `skills/meta/slot_selection.md` 출력 스키마 + 예시 / `skills/meta/notion_placement.md` / `pipeline_defs/blog_image.yaml` / `CLAUDE.md` 운영 가드 / `tools/llm/analyze_content.py` (`_blocks_for_prompt` + `_gate_slots` 분리) / `tests/test_analyze_content.py` 신설.
+
+- **v1.8.1-plan** (2026-07-06): **`kakao_dialogue` 카드 은퇴** (사용자 확정 결정 2026-07-06). 정의 보존 → [plan_history.md](plan_history.md) §1.4 — illustration deprecate (v1.8, 5a8c59a) 와 동일 방식: 즉시 코드 삭제 X, backwards compat 유지, 신규 trigger 만 차단.
+  - **은퇴 사유**: (a) **방향성 불일치** — 블로그 이미지는 "환기하되 몰입을 깨지 않아야" 하는데 카톡 채팅 스크린샷은 텍스트 과다로 몰입 저해. (b) **text_rule 모순** — kakao 는 텍스트 사실 카드인데 vision 검수 `_resolve_text_rule` 이 `text_rule="zero"` 고정 (`tools/llm/image_review.py:52`) → 텍스트 검출 = 100% 폐기, gpt-image thinking ($0.25/장) 생성 비용만 소모. (c) 운영 trigger 0건 — §19.11 kakao OCR Levenshtein 검증도 착수 전 (paper-only 상태 그대로 obsolete).
+  - **갱신 위치**: §3 흐름도 AI path / §4 카드 카탈로그 (활성 7종 → 6종, 감성형 = ai_visual 단일) / §10 kakao OCR 미결정 row 삭제 (결정 완료) / §13.2·§13.6 alt_text 카드 목록 / §14.4 kakao paper-only 분기 obsolete / plan_history §1.4 정의 보존 + §19.11 obsolete 표기.
+  - **코드/스킬 동기화**: `skills/meta/slot_selection.md` kakao trigger 제거 + deprecated 표기 / `skills/image_types/kakao_dialogue.md` 헤더 deprecated / `pipeline_defs/blog_image.yaml` 활성 목록 갱신 / `CLAUDE.md` 절대 룰 #5 + 운영 가드 §19.11 obsolete / `orchestrator.py` `SUPPORTED_TYPES`·`AI_CARD_TYPES` 는 backwards compat 유지 (LLM 신규 trigger 는 slot_selection 단에서 차단 — illustration 선례).
 
 - **v1.8.0-plan** (2026-05-14): Phase 4 (감성형 카드 사상 재설계 + 토스피드 톤 정합) plan 신설. **plan only — 코드 변경 0**.
   - **배경**: (a) 카드 배경 `#ffffff` 강제가 토스피드 톤("소프트 에디토리얼 미니멀리즘")과 불일치 (drift 3곳: `styles/ehyun_default.yaml:87` + `templates/_base.css:147` + `tools/render/ai_render.py:58`). (b) gpt-image-2-2026-04-21 한글 정확도 ↑ → AI 활용 비율 상향 정당화. (c) illustration 단일 스타일 한계 → 콘텐츠 톤 다양성 부족. (d) §19.16 vision OCR 텍스트 환각 검증이 paper-only 인 상태로 ai_visual ship 시 §23 / 사실 정확성 위반 리스크.
