@@ -10,8 +10,12 @@ import json
 import logging
 from typing import Any
 
-from tools.limits import ANALYZE_BUDGET_USD, MAX_BLOCKS_PROMPT_CHARS
-from tools.llm._common import compact_blocks, load_skill, query_json
+from tools.limits import (
+    ANALYZE_BUDGET_USD,
+    MAX_BLOCKS_PROMPT_CHARS,
+    MAX_BLOCKS_PROMPT_CHARS_API,
+)
+from tools.llm._common import compact_blocks, llm_transport, load_skill, query_json
 from tools.visual_styles import list_visual_styles
 
 logger = logging.getLogger(__name__)
@@ -210,10 +214,16 @@ async def analyze_content(
         _blocks_for_prompt(compacted), ensure_ascii=False, separators=(",", ":"),
     )
 
-    if len(blocks_compact) > MAX_BLOCKS_PROMPT_CHARS:
+    # v1.8.3 — 압축(잘림) 진입 임계는 transport 종속. api 는 전달 한계가 없어
+    # 150K safety ceiling 까지 본문 무손실 (§19.8 압축은 초장문 비용 가드로만 남음).
+    compress_threshold = (
+        MAX_BLOCKS_PROMPT_CHARS if llm_transport() == "sdk"
+        else MAX_BLOCKS_PROMPT_CHARS_API
+    )
+    if len(blocks_compact) > compress_threshold:
         logger.warning(
             "본문 compact %d chars > %d 한계 — §19.8 압축 모드 fallback (slot 결정용 한정)",
-            len(blocks_compact), MAX_BLOCKS_PROMPT_CHARS,
+            len(blocks_compact), compress_threshold,
         )
         compacted = _compress_for_analyze(compacted)
         # idx 는 압축 후 리스트 기준으로 재부여 — LLM 이 보는 목록과 1:1 대응.

@@ -1,13 +1,18 @@
-"""LLM 호출 공통 유틸. claude-agent-sdk query() 직접 호출.
+"""LLM 호출 공통 유틸 — transport 이중화 (v1.8.3).
 
-설계 결정 (§12 Week 1-2, plan v1.7.3+):
-  - Week 0 spike (b7fe789, scripts/_spike_sdk.py)에서 SDK 0.1.77 + Sonnet 4.6
-    + max_turns=1 + setting_sources=[] 가드 하 functional equivalence 확인
+transport 선택 (ENV `LLM_TRANSPORT`):
+  - "sdk": claude-agent-sdk query() — claude.exe subprocess wrapper.
+    §12 Week 1-2 spike (b7fe789) 로 채택된 기존 경로. **전달 통로 한계**
+    (Windows argv/stdin ~20KB) 때문에 긴 본문은 §19.8 압축으로 잘림.
+  - "api": anthropic SDK messages.create() 직접 호출 — vision_review.py 와
+    같은 path. 전달 한계 없음 = 긴 글 무손실. prompt caching 은 system block
+    cache_control 로 명시 (sdk 는 자동이었음 — 놓치면 스킬 47K+ 토큰 매 호출
+    재과금이므로 §12.9 spike 로 영수증 검증 후 전환).
+
+sdk path 설계 결정 (§12 Week 1-2, plan v1.7.3+):
+  - max_turns=1 + setting_sources=[] 가드 하 functional equivalence 확인
     (N=4 cost 0.34-0.64x cheaper, byte-identical simple_table output).
-  - 이전 SDK 우회 동기 (default Claude Code agent system prompt 추가 inject,
-    max_turns 무시 등으로 토큰 비용 3배+)는 위 가드로 해소.
-  - agent loop / hooks / subagents 풀 도입 X (plan §12.6 "처음부터 다 빼지
-    말기"). 단발 query() 1회만. 필요해지면 별도 path.
+  - agent loop / hooks / subagents 풀 도입 X (plan §12.6). 단발 query() 1회만.
 
 Skills 자동 로드는 사용 안 함. skills/*.md 본문을 system_prompt에 직접 inject (옵션 A).
 """
@@ -15,9 +20,11 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
+import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Final, Literal
 
 from claude_agent_sdk import (
     AssistantMessage,
@@ -29,10 +36,13 @@ from claude_agent_sdk import (
 
 from tools.limits import (
     MAX_USER_PROMPT_CHARS,
+    QUERY_JSON_API_MAX_TOKENS,
     QUERY_JSON_DEFAULT_BUDGET_USD,
     QUERY_JSON_TIMEOUT_S,
 )
 from tools.llm.models import DEFAULT_MODEL
+
+logger = logging.getLogger(__name__)
 
 ROOT = Path(__file__).resolve().parents[2]
 SKILLS = ROOT / "skills"
@@ -85,6 +95,131 @@ def load_skill(rel_path: str) -> str:
     return (SKILLS / rel_path).read_text(encoding="utf-8")
 
 
+# === transport 선택 (v1.8.3) =================================================
+
+LLM_TRANSPORT_ENV: Final[str] = "LLM_TRANSPORT"
+_VALID_TRANSPORTS: Final[frozenset[str]] = frozenset({"sdk", "api"})
+
+# Sonnet 4.6 pricing (USD/M tokens) — vision_review.py `_SONNET_46_RATE` 와 동일 값.
+# (vision 은 §12 결정과 직교한 별 path 라 상수 공유 대신 각자 정의 — 값 변경 시 둘 다 동기.)
+_SONNET_46_RATE: Final[dict[str, float]] = {
+    "input": 3.0,
+    "output": 15.0,
+    "cache_creation": 3.75,
+    "cache_read": 0.30,
+}
+
+_JSON_ONLY_SUFFIX: Final[str] = "\n\n응답은 오직 JSON 한 객체만. 설명/주석 X."
+
+
+def llm_transport() -> Literal["sdk", "api"]:
+    """ENV `LLM_TRANSPORT` 로 전송 경로 결정. default "api" (v1.8.3, 2026-07-06).
+
+    §12.9 spike 통과로 default 전환: smoke 캐싱 영수증 OK (2회차 cache_read 11,832
+    tokens, $0.045→$0.004) + 252블록 페이지 compare 슬롯 동등 · 비용 0.23x.
+    운영 롤백: ENV `LLM_TRANSPORT=sdk` (코드 변경 불필요).
+    """
+    val = os.environ.get(LLM_TRANSPORT_ENV, "api").strip().lower() or "api"
+    if val not in _VALID_TRANSPORTS:
+        raise RuntimeError(
+            f"{LLM_TRANSPORT_ENV}={val!r} 미지원 (허용: {sorted(_VALID_TRANSPORTS)})"
+        )
+    return val  # type: ignore[return-value]
+
+
+def _cost_from_usage(usage: Any) -> float:
+    """anthropic.Usage → cost_usd 환산 (Sonnet 4.6 rate)."""
+    inp = getattr(usage, "input_tokens", 0) or 0
+    out = getattr(usage, "output_tokens", 0) or 0
+    cache_w = getattr(usage, "cache_creation_input_tokens", 0) or 0
+    cache_r = getattr(usage, "cache_read_input_tokens", 0) or 0
+    return (
+        inp * _SONNET_46_RATE["input"]
+        + out * _SONNET_46_RATE["output"]
+        + cache_w * _SONNET_46_RATE["cache_creation"]
+        + cache_r * _SONNET_46_RATE["cache_read"]
+    ) / 1_000_000
+
+
+def _call_api_sync(user_prompt: str, full_system: str) -> tuple[str, Any, str | None]:
+    """anthropic SDK sync 호출. (result_text, usage, stop_reason) 반환.
+
+    prompt caching: system 전체(스킬 markdown 47K+ 토큰)를 cache block 1개로 표시.
+    같은 call site(analyze / review×카드타입)끼리 cache 공유 — TTL 5분, 페이지/슬롯
+    연쇄 처리 패턴에서 2회차부터 cache_read 로 ~10x 절감. 영수증 검증은 §12.9 spike.
+    """
+    from anthropic import Anthropic  # lazy import — sdk transport 만 쓰는 환경 고려
+
+    client = Anthropic()
+    # max_tokens 32K 는 SDK 가 "10분 초과 가능 작업 = streaming 필수" 로 강제 →
+    # stream 으로 받고 최종 메시지만 취함 (동작 동일, timeout 은 호출자 asyncio.timeout).
+    with client.messages.stream(
+        model=DEFAULT_MODEL,
+        max_tokens=QUERY_JSON_API_MAX_TOKENS,
+        system=[
+            {
+                "type": "text",
+                "text": full_system,
+                "cache_control": {"type": "ephemeral"},
+            }
+        ],
+        messages=[{"role": "user", "content": user_prompt}],
+    ) as stream:
+        resp = stream.get_final_message()
+    result_text = ""
+    for block in resp.content:
+        text = getattr(block, "text", None)
+        if text:
+            result_text += text
+    return result_text, resp.usage, resp.stop_reason
+
+
+async def _query_json_api(
+    user_prompt: str,
+    full_system: str,
+    *,
+    max_budget_usd: float,
+    timeout_s: int,
+) -> tuple[Any, float]:
+    """api transport 본체. (parsed, cost_usd) 반환.
+
+    budget 은 사후 검증 — sdk 와 달리 중단이 불가하므로 단일 호출 초과분은 지출됨.
+    초과 시 RuntimeError raise 로 sdk 의 error_max_budget_usd 와 같은 폐기 semantics 유지.
+    """
+    if not os.environ.get("ANTHROPIC_API_KEY"):
+        raise RuntimeError("query_json(api): ANTHROPIC_API_KEY 미설정. .env 확인.")
+
+    async with asyncio.timeout(timeout_s):
+        result_text, usage, stop_reason = await asyncio.to_thread(
+            _call_api_sync, user_prompt, full_system,
+        )
+
+    cost = _cost_from_usage(usage)
+    logger.info(
+        "query_json(api): cost=$%.4f in=%s out=%s cache_w=%s cache_r=%s stop=%s",
+        cost,
+        getattr(usage, "input_tokens", "?"), getattr(usage, "output_tokens", "?"),
+        getattr(usage, "cache_creation_input_tokens", "?"),
+        getattr(usage, "cache_read_input_tokens", "?"),
+        stop_reason,
+    )
+
+    if stop_reason == "max_tokens":
+        raise RuntimeError(
+            f"query_json(api): 응답이 max_tokens({QUERY_JSON_API_MAX_TOKENS})에서 잘림 — "
+            "JSON 불완전. 슬롯/페이지 폐기 대상."
+        )
+    if not result_text.strip():
+        raise RuntimeError(f"query_json(api): 빈 응답 (stop_reason={stop_reason!r})")
+    if cost > max_budget_usd:
+        raise RuntimeError(
+            f"query_json(api): cost ${cost:.4f} > budget ${max_budget_usd:.2f} "
+            "(사후 검증 — 단일 호출 초과분은 지출됨)"
+        )
+
+    return _extract_json(result_text.strip()), cost
+
+
 async def query_json(
     user_prompt: str,
     system_prompt: str,
@@ -92,21 +227,29 @@ async def query_json(
     max_budget_usd: float = QUERY_JSON_DEFAULT_BUDGET_USD,
     timeout_s: int = QUERY_JSON_TIMEOUT_S,
 ) -> tuple[Any, float]:
-    """claude-agent-sdk query()로 prompt 보내고 JSON 응답 + 비용을 (parsed, cost_usd) 튜플로 반환.
+    """prompt 를 LLM 에 보내고 JSON 응답 + 비용을 (parsed, cost_usd) 튜플로 반환.
 
-    내부 구현: claude_agent_sdk.query() 1회 호출 (max_turns=1, setting_sources=[]).
-    ResultMessage.result에서 응답 텍스트, ResultMessage.total_cost_usd에서 비용 추출.
-    ResultMessage.result가 비면 AssistantMessage.content의 TextBlock 합산으로 fallback.
+    transport (ENV `LLM_TRANSPORT`, v1.8.3):
+      - "sdk" (default): claude_agent_sdk.query() 1회 (max_turns=1, setting_sources=[]).
+        user_prompt 20K 한계 (전달 통로 제약) — 호출 측 압축 필요.
+      - "api": anthropic SDK 직접 호출 + prompt caching. 전달 한계 없음.
 
     응답 텍스트가 markdown fence(```json ...```)에 싸여있어도 추출 (_extract_json).
     """
+    full_system = system_prompt + _JSON_ONLY_SUFFIX
+
+    if llm_transport() == "api":
+        return await _query_json_api(
+            user_prompt, full_system,
+            max_budget_usd=max_budget_usd, timeout_s=timeout_s,
+        )
+
+    # === sdk transport (기존 경로) — 전달 통로 20K 한계 ===
     if len(user_prompt) > MAX_USER_PROMPT_CHARS:
         raise RuntimeError(
             f"user_prompt {len(user_prompt):,} chars > {MAX_USER_PROMPT_CHARS} 한계. "
             "호출 측에서 압축 또는 청크 분할 필요."
         )
-
-    full_system = system_prompt + "\n\n응답은 오직 JSON 한 객체만. 설명/주석 X."
 
     options = ClaudeAgentOptions(
         model=DEFAULT_MODEL,

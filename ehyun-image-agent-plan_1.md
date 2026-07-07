@@ -1,4 +1,4 @@
-# 이현 블로그 이미지 에이전트 — Plan (v1.8.2-plan)
+# 이현 블로그 이미지 에이전트 — Plan (v1.8.3-plan)
 
 > 노션 콘텐츠에 자동으로 이미지 카드 박는 에이전트.
 >
@@ -715,6 +715,9 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 ---
 
 ## Changelog
+
+- **v1.8.3-plan** (2026-07-06): **LLM transport 이중화 + default api 전환** — 긴 글 잘림 소멸. 배경: sdk transport(claude-agent-sdk = claude.exe subprocess)의 전달 통로 한계(~20KB)가 긴 본문을 §19.8 압축으로 자르고(analyze), review_input 은 압축 fallback 조차 없어 긴 글 슬롯 전멸 원인. 사용자 요구 "열심히 쓴 긴 글이 잘리면 안 된다" 확정. **해결**: `tools/llm/_common.py` 에 ENV `LLM_TRANSPORT`(sdk|api) 스위치 신설 — api path 는 anthropic SDK `messages.stream()` 직접 호출 (vision_review 선례) + system prompt cache_control 명시 캐싱. **§12.9 spike 실측** (scripts/_spike_api_transport.py): ① smoke — 1회차 cache_creation 11,832 tokens $0.045 → 2회차 cache_read 11,832 $0.004 (캐싱 정상) ② compare (252블록 실페이지) — sdk $0.4345/3슬롯 vs api $0.1014/3슬롯 = **비용 0.23x + 슬롯 mix 동등** (정보2+감성1, 타입 1개 차이는 LLM 비결정성 범위, api 쪽 miniature_stock 매칭 정상). **default=api 전환, 롤백은 `LLM_TRANSPORT=sdk`** (코드 변경 0). 압축 임계 transport 분기: sdk 18K 유지 / api 는 150K safety ceiling(`MAX_BLOCKS_PROMPT_CHARS_API`, 비용 폭주 가드)만 — 일반 긴 글 무손실. budget 은 api 에서 사후 검증 (단일 호출 초과분 지출 후 raise — sdk error_max_budget_usd 와 동일 폐기 semantics). §12 sdk 채택 결정은 subprocess 전달 한계라는 새 근거로 부분 대체 — sdk path 코드는 롤백용 보존. 갱신: `tools/limits.py`(상수 2종) / `tools/llm/analyze_content.py`(임계 분기) / `tests/test_llm_transport.py` 신설 / CLAUDE.md 기술 스택 + 운영 사실.
+  - **e2e 1건 (2026-07-07, 252블록 실페이지)**: 1차 run 3슬롯 중 2슬롯 `AncestorMismatchError` 폐기 → **기존 잠복 버그 발견**: `get_page_blocks` 가 `child_page`/`child_database` 내부까지 재귀 — 하위 페이지 본문이 (a) analyze/review "본문" 오염 (절대 룰 #1 벡터) (b) 이미지 앵커 후보 노출 (§19.2 사후 가드가 차단했으나 렌더/업로드 비용 지출 후). **fix**: `_SKIP_RECURSE_TYPES` 재귀 제외 + `tests/test_get_page_content.py` 신설. 재시험 **3/3 통과, $0.2652/페이지** (하위 페이지 텍스트 제거로 analyze input 12,268→8,212 tokens — 오염 실증). status "발행 필요" 정상 전이. v1.8.2 인덱스 게이트 + §19.2 사후 가드 이중 안전망 실전 검증됨.
 
 - **v1.8.2-plan** (2026-07-06): **block 위치 결정 — 인덱스 선택 방식 전환** (§19.18 후속, 환각 원천 차단). 배경: §19.18 사전 게이트는 사후 방어일 뿐 — LLM 이 32자 UUID 를 그대로 베끼는 구조 자체가 환각의 원인이고 운영에서 산발 재발. **해결**: `analyze_content` 가 LLM 에 blocks 를 UUID 없이 순번 `idx` 로 제시 → LLM 은 `position_after_block_index`(정수) 만 출력 → 코드가 idx→block_id 변환. 범위 밖/비정수 idx 는 기존 게이트와 동일하게 슬롯 drop + warning. legacy `position_after_block_id` 출력은 known-id set 검증 통과 시 수용 (전환기 안전망). 부수 효과: prompt 에서 UUID 제거 — 블록당 ~45 chars 절약 (§19.8 압축 모드 진입 빈도 ↓). **orchestrator 인터페이스 불변** — `slot["position_after_block_id"]` 소비 유지 (analyze 가 변환 완료 후 전달), 사후 가드 (`_verify_ancestor`, retry 화이트리스트) 그대로. **갱신 위치**: §5 가드 표 / `skills/meta/slot_selection.md` 출력 스키마 + 예시 / `skills/meta/notion_placement.md` / `pipeline_defs/blog_image.yaml` / `CLAUDE.md` 운영 가드 / `tools/llm/analyze_content.py` (`_blocks_for_prompt` + `_gate_slots` 분리) / `tests/test_analyze_content.py` 신설.
 
