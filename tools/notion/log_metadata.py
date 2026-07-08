@@ -85,11 +85,20 @@ async def log_metadata(
 
 
 async def get_logged_page_ids(log_db_id: str, *, limit: int = 100) -> set[str]:
-    """로그 DB 최근 N건에서 '관련 페이지' mention page_id 추출 (§19.1 멱등성).
+    """로그 DB 최근 N건에서 **성공 이력이 있는** '관련 페이지' page_id 추출 (§19.1 멱등성).
 
     cron이 batch 시작 시 1회 호출. 반환된 set에 page_id(정규화)가 있으면 그 페이지는
-    이미 한 번 이상 처리됨 → skip 권장. 운영자가 '이미지 작업 중' 페이지를 의도적으로
-    재처리하려면 기존 image block + 로그 row 제거 필요 (Phase 3에서 가드 강화).
+    이미 이미지가 1장 이상 삽입됨 → skip (중복 삽입 방지).
+
+    v1.8.4 (2026-07-07) — skip 기준을 "로그 행 존재"에서 "**성공 행(셀프 리뷰=True)
+    존재**"로 좁힘. 멱등성 가드의 진짜 목적은 "중복 이미지 삽입 방지"인데, 이미지가
+    0장 박힌(전부 실패) 페이지까지 skip 하던 게 부작용이었음. 전부 실패 페이지는 삽입된
+    이미지가 없어 재처리해도 중복 불가 → 운영자가 상태값만 "이미지 필요"로 되돌리면
+    자동 재처리 (로그 수동 삭제 불필요).
+
+    **한계 (의도된 것)**: 일부 성공(1장+ 삽입, 나머지 실패) 페이지는 성공 행이 있어
+    여전히 skip — 이미 박힌 이미지 중복 방지. 이 케이스 재처리는 "골라서 다시 그리기"
+    별도 트랙 (2026-07-07 사용자 논의, 통째 재처리는 취향 판단 이미지에 부적합).
     """
     client = get_client()
     ds_id = resolve_data_source_id(log_db_id)
@@ -110,6 +119,10 @@ async def get_logged_page_ids(log_db_id: str, *, limit: int = 100) -> set[str]:
     out: set[str] = set()
     for row in resp.get("results", []):
         props = row.get("properties", {}) or {}
+        # 성공 행만 카운트 — 셀프 리뷰 체크박스가 True (이미지 실제 삽입됨) 일 때만.
+        # log_metadata 는 review_passed and new_block_id is not None 일 때만 True 로 기록.
+        if not (props.get("셀프 리뷰") or {}).get("checkbox"):
+            continue
         related = (props.get("관련 페이지") or {}).get("rich_text") or []
         for item in related:
             if item.get("type") != "mention":

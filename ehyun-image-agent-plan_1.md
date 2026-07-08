@@ -1,4 +1,4 @@
-# 이현 블로그 이미지 에이전트 — Plan (v1.8.3-plan)
+# 이현 블로그 이미지 에이전트 — Plan (v1.8.4-plan)
 
 > 노션 콘텐츠에 자동으로 이미지 카드 박는 에이전트.
 >
@@ -715,6 +715,8 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 ---
 
 ## Changelog
+
+- **v1.8.4-plan** (2026-07-07): **멱등성 가드 성공-행-only 로 좁힘 — 실패 페이지 상태값만으로 재처리**. 배경: `get_logged_page_ids` 가 성공/실패 무관하게 로그 행 존재 시 skip → 전부 실패(이미지 0장) 페이지도 "처리됨"으로 막아, 운영자가 재처리하려면 로그 행 수동 삭제 + 상태 변경 2수작업 필요했음. 멱등성 가드의 진짜 목적은 "중복 이미지 삽입 방지"인데 이미지 0장 페이지는 재처리해도 중복 불가 → skip 이 부작용. **해결**: skip 기준을 "로그 행 존재" → "**셀프 리뷰=True(삽입 성공) 행 존재**"로 좁힘 (`log_metadata.py` 한 곳, 안전장치 약화 아님 — 가드를 원래 목적에 정합). 효과: **전부 실패 페이지는 상태값만 `이미지 필요`로 되돌리면 자동 재처리** (로그 삭제 불필요). **한계 (의도)**: 일부 성공 페이지는 성공 행이 있어 여전히 skip — 통째 재처리는 취향 판단 이미지에 부적합(맘에 든 이미지도 날아감, 2026-07-07 사용자 논의)이라 "골라서 다시 그리기" 별도 트랙으로 분리. **100행 window 리스크** (성공 행이 최근 100건 밖으로 밀리면 재처리 → 중복) 기존과 동일, cron 5페이지/회라 당분간 안전. 갱신: `tools/notion/log_metadata.py` / `tests/test_logged_page_ids.py` 신설 / `skills/meta/regen_policy.md` 멱등성·status 룰.
 
 - **v1.8.3-plan** (2026-07-06): **LLM transport 이중화 + default api 전환** — 긴 글 잘림 소멸. 배경: sdk transport(claude-agent-sdk = claude.exe subprocess)의 전달 통로 한계(~20KB)가 긴 본문을 §19.8 압축으로 자르고(analyze), review_input 은 압축 fallback 조차 없어 긴 글 슬롯 전멸 원인. 사용자 요구 "열심히 쓴 긴 글이 잘리면 안 된다" 확정. **해결**: `tools/llm/_common.py` 에 ENV `LLM_TRANSPORT`(sdk|api) 스위치 신설 — api path 는 anthropic SDK `messages.stream()` 직접 호출 (vision_review 선례) + system prompt cache_control 명시 캐싱. **§12.9 spike 실측** (scripts/_spike_api_transport.py): ① smoke — 1회차 cache_creation 11,832 tokens $0.045 → 2회차 cache_read 11,832 $0.004 (캐싱 정상) ② compare (252블록 실페이지) — sdk $0.4345/3슬롯 vs api $0.1014/3슬롯 = **비용 0.23x + 슬롯 mix 동등** (정보2+감성1, 타입 1개 차이는 LLM 비결정성 범위, api 쪽 miniature_stock 매칭 정상). **default=api 전환, 롤백은 `LLM_TRANSPORT=sdk`** (코드 변경 0). 압축 임계 transport 분기: sdk 18K 유지 / api 는 150K safety ceiling(`MAX_BLOCKS_PROMPT_CHARS_API`, 비용 폭주 가드)만 — 일반 긴 글 무손실. budget 은 api 에서 사후 검증 (단일 호출 초과분 지출 후 raise — sdk error_max_budget_usd 와 동일 폐기 semantics). §12 sdk 채택 결정은 subprocess 전달 한계라는 새 근거로 부분 대체 — sdk path 코드는 롤백용 보존. 갱신: `tools/limits.py`(상수 2종) / `tools/llm/analyze_content.py`(임계 분기) / `tests/test_llm_transport.py` 신설 / CLAUDE.md 기술 스택 + 운영 사실.
   - **e2e 1건 (2026-07-07, 252블록 실페이지)**: 1차 run 3슬롯 중 2슬롯 `AncestorMismatchError` 폐기 → **기존 잠복 버그 발견**: `get_page_blocks` 가 `child_page`/`child_database` 내부까지 재귀 — 하위 페이지 본문이 (a) analyze/review "본문" 오염 (절대 룰 #1 벡터) (b) 이미지 앵커 후보 노출 (§19.2 사후 가드가 차단했으나 렌더/업로드 비용 지출 후). **fix**: `_SKIP_RECURSE_TYPES` 재귀 제외 + `tests/test_get_page_content.py` 신설. 재시험 **3/3 통과, $0.2652/페이지** (하위 페이지 텍스트 제거로 analyze input 12,268→8,212 tokens — 오염 실증). status "발행 필요" 정상 전이. v1.8.2 인덱스 게이트 + §19.2 사후 가드 이중 안전망 실전 검증됨.
