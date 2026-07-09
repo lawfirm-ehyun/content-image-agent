@@ -72,9 +72,9 @@ stages:
     skill: meta/regen_policy.md
     tool: tools/notion/update_status.py:update_page_status
     description: |
-      모든 슬롯 성공 → "발행 필요"
-      1개 이상 슬롯 failed → "이미지 작업 중"
-      슬롯 0개 → "발행 필요"
+      완료 시 성공/실패 무관 항상 "이미지 작업 중" (v1.8.5).
+      모든 완료 페이지가 사람 검수를 거침 → "발행 필요"는 검수자가 수동 승격.
+      cron 은 "이미지 필요"만 fetch 하므로 이 라벨은 재처리 트리거 아님.
 
 # 비용 가드 — 상수값 SSOT는 tools/limits.py (plan §6). 본 yaml에 숫자 복사 X.
 # (drift 방지 — 2026-07-06 구식 값 $1.00/$3.00이 실값 $2.50/$8.00과 어긋난 채 방치된 사례로 원칙 확정)

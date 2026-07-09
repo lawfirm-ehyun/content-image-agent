@@ -8,7 +8,8 @@ pipeline_defs/blog_image.yaml의 명세를 코드로 구현. Phase 1엔 수동 t
 
 에러 핸들링 (AGENT_GUIDE §4):
   - 슬롯 단위 try/except — 1개 슬롯 실패해도 다음 슬롯 진행
-  - 1개 이상 슬롯 failed → 페이지 status = "이미지 작업 중" (사람 개입 대기)
+  - 완료 시 페이지 status = "이미지 작업 중" (성공/실패 무관, v1.8.5) — 사람 검수 후
+    수동으로 "발행 필요" 승격. cron 은 "이미지 필요"만 fetch 하므로 재처리 트리거 아님.
 """
 from __future__ import annotations
 
@@ -677,7 +678,12 @@ async def run_for_page(
 
     passed = sum(1 for r in results if r.passed)
     failed = len(results) - passed
-    final_status = "이미지 작업 중" if failed > 0 else "발행 필요"
+    # v1.8.5 — 성공/실패 무관 항상 "이미지 작업 중". 모든 완료 페이지는 사람 검수를
+    # 거치므로(팀 논의 2026-07-09 "잘 만들어져도 어차피 검수해서 뺀다") 시스템이
+    # "발행 필요"를 자동 부여하지 않음. 검수자가 확인 후 수동으로 "발행 필요" 승격.
+    # cron 은 "이미지 필요"만 fetch → 이 라벨은 재처리 트리거 아님. 중복 삽입 방지는
+    # 로그 성공-행 기반(§19.1 멱등성)이라 status 값과 독립.
+    final_status = "이미지 작업 중"
 
     try:
         await update_page_status(page_id, final_status, database_id=content_db_id)
