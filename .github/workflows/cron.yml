@@ -34,7 +34,7 @@ jobs:
   # Job A — "이미지 필요" 페이지 목록을 JSON 으로 산출 (멱등성 필터 적용).
   # outputs.pages 가 빈 배열이면 process job 은 skip 됨.
   fetch:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     outputs:
       pages: ${{ steps.list.outputs.pages }}
@@ -66,7 +66,7 @@ jobs:
   process:
     needs: fetch
     if: needs.fetch.outputs.pages != '[]' && needs.fetch.outputs.pages != ''
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     strategy:
       fail-fast: false   # 한 페이지 실패해도 다른 페이지 cell 계속 진행 (§19.9 정신).
@@ -107,7 +107,7 @@ jobs:
   notify:
     needs: [fetch, process]
     if: ${{ always() && github.event.inputs.slack_channel != '' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 3
     steps:
       - name: Post result to Slack thread
