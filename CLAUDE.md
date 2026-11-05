@@ -43,7 +43,7 @@
 - **title / headers / cells (라벨링·재표현)**: 본문 사실 안에서 직관 합성 OK. 본문에 없는 사실/숫자/주체 삽입은 X. title은 H2/H3와 완전 동일만 X (부분 겹침 OK).
 - **values / labels / point_labels / source (사실 그 자체)**: 1자도 의역·추측 X. 본문 그대로.
 
-**슬롯 선택 우선순위**: ① 줄글 발굴 → simple_table  ② 본문 표 → chart 형식 전환 (시계열만)  ③ 본문 표 재구성 (드물게)  ④ 본문 표 그대로 복제 = ❌. **simple_table 컬럼 수: 2 default / 3 특수 / 4+ 슬롯 X.**
+**슬롯 선택 우선순위**: ① 줄글 발굴 → simple_table  ② 본문 표 → 시계열 시각화 (chart 또는 timeline)  ③ 본문 표 재구성 (컬럼 발췌·관점 변경·줄글 결합)  ④ 본문 표 그대로 복제 = ❌ (**카드 종류만 바꾼 껍데기 전환 포함**). ②③④ 판정은 카드 종류 무관 — 단일 정의는 `slot_selection.md` "본문 표 재사용 룰", `prompt_review.md` 는 그 미러 (v1.8.8). **simple_table 컬럼 수: 2 default / 3 특수 / 4+ 슬롯 X.**
 
 상세 룰: `skills/meta/slot_selection.md`, `skills/meta/prompt_review.md`.
 
