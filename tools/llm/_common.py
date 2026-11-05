@@ -100,13 +100,13 @@ def load_skill(rel_path: str) -> str:
 LLM_TRANSPORT_ENV: Final[str] = "LLM_TRANSPORT"
 _VALID_TRANSPORTS: Final[frozenset[str]] = frozenset({"sdk", "api"})
 
-# Sonnet 4.6 pricing (USD/M tokens) — vision_review.py `_SONNET_46_RATE` 와 동일 값.
+# Sonnet 5.5 pricing (USD/M tokens) — vision_review.py `_SONNET_55_RATE` 와 동일 값.
 # (vision 은 §12 결정과 직교한 별 path 라 상수 공유 대신 각자 정의 — 값 변경 시 둘 다 동기.)
-_SONNET_46_RATE: Final[dict[str, float]] = {
-    "input": 3.0,
-    "output": 15.0,
-    "cache_creation": 3.75,
-    "cache_read": 0.30,
+_SONNET_55_RATE: Final[dict[str, float]] = {
+    "input": 2.0,
+    "output": 10.0,
+    "cache_creation": 2.50,
+    "cache_read": 0.20,
 }
 
 _JSON_ONLY_SUFFIX: Final[str] = "\n\n응답은 오직 JSON 한 객체만. 설명/주석 X."
@@ -128,16 +128,16 @@ def llm_transport() -> Literal["sdk", "api"]:
 
 
 def _cost_from_usage(usage: Any) -> float:
-    """anthropic.Usage → cost_usd 환산 (Sonnet 4.6 rate)."""
+    """anthropic.Usage → cost_usd 환산 (Sonnet 5.5 rate)."""
     inp = getattr(usage, "input_tokens", 0) or 0
     out = getattr(usage, "output_tokens", 0) or 0
     cache_w = getattr(usage, "cache_creation_input_tokens", 0) or 0
     cache_r = getattr(usage, "cache_read_input_tokens", 0) or 0
     return (
-        inp * _SONNET_46_RATE["input"]
-        + out * _SONNET_46_RATE["output"]
-        + cache_w * _SONNET_46_RATE["cache_creation"]
-        + cache_r * _SONNET_46_RATE["cache_read"]
+        inp * _SONNET_55_RATE["input"]
+        + out * _SONNET_55_RATE["output"]
+        + cache_w * _SONNET_55_RATE["cache_creation"]
+        + cache_r * _SONNET_55_RATE["cache_read"]
     ) / 1_000_000
 
 
@@ -156,6 +156,10 @@ def _call_api_sync(user_prompt: str, full_system: str) -> tuple[str, Any, str | 
     with client.messages.stream(
         model=DEFAULT_MODEL,
         max_tokens=QUERY_JSON_API_MAX_TOKENS,
+        # Sonnet 5.5 는 thinking default ON(adaptive) + effort default high — 4.6(thinking 없음)
+        # 대비 output 토큰이 늘어 §6 budget(analyze $0.80 / review $0.30) 압박. 사실 추출
+        # 과제라 medium 이면 충분, 품질 미달 관측 시 high 로 상향 (v1.8.6).
+        output_config={"effort": "medium"},
         system=[
             {
                 "type": "text",

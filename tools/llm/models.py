@@ -10,4 +10,4 @@ from __future__ import annotations
 
 from typing import Final
 
-DEFAULT_MODEL: Final[str] = "claude-sonnet-4-6"
+DEFAULT_MODEL: Final[str] = "claude-sonnet-5-5"

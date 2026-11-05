@@ -43,7 +43,8 @@ async for msg in query(prompt=user_prompt, options=options):
 
 ### 3.2 모델 ID (확정)
 
-- **default**: `claude-sonnet-4-6` — SDK 0.1.77로 안정 호출 (spike N=4 + production N=3).
+- **default**: `claude-sonnet-5-5` (v1.8.6, 2026-11-05 상향) — 단가 입력 $2 / 출력 $10 / cache_read $0.20 per MTok. thinking default ON(adaptive) 이므로 analyze/review 는 `output_config={"effort": "medium"}`, vision 은 `thinking={"type": "between_tools"}` 로 off (512 토큰 예산 보호). 라이브 스모크 2경로 통과 2026-11-05.
+- ~~`claude-sonnet-4-6`~~ — v1.8.6 전 default. SDK 0.1.77로 안정 호출 (spike N=4 + production N=3).
 - **Opus 4.7** (`claude-opus-4-7`): SDK 0.1.77로 호출 OK 확인 (2026-05-13 ping, subtype=success, $0.16). plan §12.4 fallback (a) 회피. Phase 4 학습 루프 진입 시 분석 품질 부족하면 default 변경 검토.
 
 ### 3.3 Skills 로드 — 옵션 A 확정 (v1.2)

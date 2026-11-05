@@ -577,7 +577,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 
 **vision 모델 — Claude Sonnet 4.6 vision (사용자 컨펌 2026-05-14) / vision input path — anthropic SDK 별 path (사용자 컨펌 2026-05-18)**:
 - **path**: anthropic SDK 별 신설 — `claude-agent-sdk` 0.1.77 ContentBlock 에 ImageBlock 정의 부재 (`claude_agent_sdk/types.py:992-999` 확인, 2026-05-18). vision 은 plan §12 SDK 통일 결정과 직교. `anthropic.Anthropic().messages.create()` 직접 호출, multimodal content array (image base64 source) 표준 path. (A) streaming dict raw passthrough 미문서화 path 의존 위험 (0.1.78+ breakage) 회피 사유로 (B) 단독 채택.
-- **모델**: Sonnet 4.6 (`claude-sonnet-4-6`). LLM reasoning 톤 일관 — 기존 review.py 와 같은 모델.
+- **모델**: Sonnet 4.6 (`claude-sonnet-4-6`). LLM reasoning 톤 일관 — 기존 review.py 와 같은 모델. **(v1.8.6, 2026-11-05: `claude-sonnet-5-5` 로 상향 + thinking off — Changelog 참조. 아래는 당시 결정 기록.)**
 - **비용 계상**: anthropic.Usage (input_tokens / output_tokens / cache_*) → cost 환산 path 신설 → token-ledger.ndjson 통합 일관성 유지.
 - OCR 정확도 / latency / cost 1페이지 실측 spike → Phase 4.3 Design 첫 작업 (§10 미결정 row, vision spike).
 
@@ -700,7 +700,7 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 | # | 항목 | 결정 |
 |---|---|---|
 | §1 | cinematic 비율 vs 3:2 default 충돌 | A안 — 스타일별 `aspect_ratio` 자유. cinematic 만 2:3, 나머지 3:2. |
-| §3 | vision review 모델 | Claude Sonnet 4.6 vision (SDK 인프라 재사용). Phase 4.3 Design 첫 작업 1페이지 spike. |
+| §3 | vision review 모델 | Claude Sonnet 4.6 vision (SDK 인프라 재사용). Phase 4.3 Design 첫 작업 1페이지 spike. **→ v1.8.6 Sonnet 5.5 상향.** |
 | §4 | 스타일 라이브러리 frontmatter | 필수 6 (`name`/`tone`/`use_when`/`prompt_template`/`aspect_ratio`/`text_rule`) + 선택 3 (`reference_dir`/`quality`/`accent_target_default`). |
 | §5 | sweep 모드 폐기 여부 | Phase 4 진입 시 sweep 폐기, fan-out only. orchestrator.main() argparse 분기 단순화. |
 
@@ -715,6 +715,8 @@ a644661 시점 Notion 로그 DB(`NOTION_DB_LOG`) 전수 query (67 row, 9 unique 
 ---
 
 ## Changelog
+
+- **v1.8.6-plan** (2026-11-05): **LLM 모델 Sonnet 4.6 → Sonnet 5.5 상향 + CI 러너 핀 고정**. 배경 ①: `ubuntu-latest` 가 Ubuntu 26.04 로 롤링되며 `playwright install --with-deps chromium` 이 전 셀 실패 (`ERROR: Playwright does not support chromium on ubuntu26.04-x64`, Playwright 1.59.1) — 11/03·11/05 run 2건 전멸. fetch 는 정상(5페이지 조회)이고 orchestrator 미진입이라 노션 상태 변경 0 → 재처리 가능했음. **원인은 코드가 아니라 운영 파이프라인이 moving target(`ubuntu-latest`)에 의존한 것** — `cron.yml` 3개 job 전부 `ubuntu-24.04` 명시 고정 (마지막 성공 10/16 run 38855340996 의 러너 이미지와 동일). 후속(별건): Playwright 1.64.x 의 26.04 지원 검증 후 러너 상향. 배경 ②: `claude-sonnet-4-6` 이 한 세대 뒤 — 현행 `claude-sonnet-5-5` 가 **입력 $3→$2 / 출력 $15→$10 / cache_read $0.30→$0.20 per MTok** 으로 더 싸고 더 강함. **마이그레이션 breaking 대응 2건**: (a) 5.5 는 thinking **default ON(adaptive)** + effort default high — 4.6(thinking 없음) 대비 output 토큰 증가로 §6 budget(analyze $0.80 / review $0.30) 압박 → analyze/review path 에 `output_config={"effort": "medium"}` 명시 (사실 추출 과제라 medium 충분, 품질 미달 관측 시 상향). (b) vision path 는 `_MAX_TOKENS=512` 로 thinking 이 예산을 먹으면 JSON 이 잘림 → `thinking={"type": "between_tools"}` 로 off (5.5 는 `disabled` 가 400). **라이브 스모크 2경로 통과** (2026-11-05): analyze/review `{"a":4}` stop=end_turn $0.0002 / vision 0929_inner_1.png `text_detected=true` 2610 in·231 out $0.0075 stop=end_turn (512 예산 내, 슬롯 cap $0.10 여유). 단가표 2곳(`tools/llm/_common.py` / `tools/render/vision_review.py` — 상수 비공유 구조라 둘 다) + `tests/test_llm_transport.py` 기대값 4건 동기, pytest 100 passed. **미검증**: 실페이지 e2e 품질·비용 (슬롯 추출 결과가 4.6 과 달라질 수 있음 — $2.50/페이지 cap 재측정 필요). 폐기: `GEMINI_API_KEY` 깃허브 시크릿 (코드 참조 0, 2026-11-05 사용자 승인 — 로컬 `.env` 는 "구글ai스튜디오 결제 해결 후 사용" 주석이 있어 보존).
 
 - **v1.8.5-plan** (2026-07-09): **완료 status 단일화 — 성공/실패 무관 `이미지 작업 중`, 사람 검수 게이트 신설**. 배경: 종전 `final_status = "이미지 작업 중" if failed>0 else "발행 필요"` — 전 슬롯 성공/0슬롯은 `발행 필요`, 1개+ 실패는 `이미지 작업 중` 2분기. 운영 현실은 "잘 만들어져도 어차피 검수해서 맘에 안 드는 건 뺀다"(팀 논의 2026-07-09) — 즉 **모든 완료 페이지가 사람 검수를 거침**. 따라서 시스템이 `발행 필요`를 자동 부여하는 건 부정확한 신호. **결정 (A안)**: 완료 시 status 를 **항상 `이미지 작업 중`** 으로, `발행 필요` 승격은 검수자가 수동. 신규 옵션(`검수 필요` 등) 도입은 옵션 수만 늘려 복잡 → 기존 `이미지 작업 중` 재사용. **안전성**: (a) cron 은 `이미지 필요` 만 fetch → `발행 필요`/`이미지 작업 중` 둘 다 non-fetch, 라벨 변경이 재처리에 무영향. (b) 중복 삽입 방지는 status 가 아닌 로그 성공-행 기반(v1.8.4 `get_logged_page_ids`) → 독립 유지. (c) `발행 필요` 를 트리거로 읽는 소비자 코드 0 (쓰기 전용 라벨). **의미 손실 (수용)**: status 컬럼만으로 성공/부분실패 구분 불가 → 슬롯별 성공/실패는 로그 DB `review_passed` row 로 조회. `발행 필요` 옵션은 수동 승격용으로 존속(`check_notion.py:REQUIRED_STATUS_OPTIONS` 유지). 갱신: `orchestrator.py`(:680 로직 + :11 docstring) / `tools/notion/update_status.py`(docstring) / `PROJECT_CONTEXT.md` §5.2 / `skills/meta/regen_policy.md` status 룰 / 본 흐름도(§3).
 

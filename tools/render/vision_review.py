@@ -2,15 +2,18 @@
 
 흐름:
   image_path (PNG/WebP) → bytes → base64 → anthropic.Anthropic().messages.create()
-  multimodal content (image + text) → Sonnet 4.6 vision → JSON {text_detected, ...}
+  multimodal content (image + text) → Sonnet 5.5 vision → JSON {text_detected, ...}
   → text_rule 분기로 (verdict, cost_usd) 반환.
 
 설계 결정 (plan §14.4, 2026-05-18 사용자 컨펌):
   - **anthropic SDK 별 path** — claude-agent-sdk 0.1.77 ContentBlock 에 ImageBlock
     정의 부재 (`claude_agent_sdk/types.py:992-999`). vision 은 plan §12 SDK 통일
     결정과 직교. anthropic.Anthropic().messages.create() multimodal 표준 path.
-  - **모델**: Sonnet 4.6 (`claude-sonnet-4-6`) — 기존 review.py 와 같은 모델.
-  - **cost 환산**: anthropic.Usage → cost_usd (Sonnet 4.6 rate).
+  - **모델**: Sonnet 5.5 (`claude-sonnet-5-5`) — 기존 review.py 와 같은 모델.
+  - **thinking off**: `{"type": "between_tools"}` — Sonnet 5.5 는 thinking default ON 이라
+    _MAX_TOKENS=512 안에서 thinking 이 예산을 먹고 JSON 이 잘릴 수 있음. 텍스트 유무
+    판별은 추론 불필요 → 4.6 과 동일 semantics 유지 (`disabled` 는 5.5 에서 400).
+  - **cost 환산**: anthropic.Usage → cost_usd (Sonnet 5.5 rate).
   - **호출자가 image_path 전달** — production 은 orchestrator 가 webp 경로 직접 전달
     (spike 의 노션 sourcing path 는 제거).
 
@@ -33,15 +36,15 @@ from tools.llm._common import _extract_json
 logger = logging.getLogger(__name__)
 
 
-# Sonnet 4.6 vision pricing (anthropic 공식 docs, 2026-05-18 기준 USD/M tokens).
-_SONNET_46_RATE: Final[dict[str, float]] = {
-    "input": 3.0,
-    "output": 15.0,
-    "cache_creation": 3.75,
-    "cache_read": 0.30,
+# Sonnet 5.5 vision pricing (anthropic 공식 docs, 2026-11-05 기준 USD/M tokens).
+_SONNET_55_RATE: Final[dict[str, float]] = {
+    "input": 2.0,
+    "output": 10.0,
+    "cache_creation": 2.50,
+    "cache_read": 0.20,
 }
 
-_VISION_MODEL: Final[str] = "claude-sonnet-4-6"
+_VISION_MODEL: Final[str] = "claude-sonnet-5-5"
 _MAX_TOKENS: Final[int] = 512
 _TIMEOUT_S: Final[int] = 30
 
@@ -65,16 +68,16 @@ text_detected = false 조건: 시각적 형태만 있고 글자 형태가 전혀
 
 
 def _cost_from_usage(usage: Any) -> float:
-    """anthropic.Usage → cost_usd 환산 (Sonnet 4.6 rate)."""
+    """anthropic.Usage → cost_usd 환산 (Sonnet 5.5 rate)."""
     inp = getattr(usage, "input_tokens", 0) or 0
     out = getattr(usage, "output_tokens", 0) or 0
     cache_w = getattr(usage, "cache_creation_input_tokens", 0) or 0
     cache_r = getattr(usage, "cache_read_input_tokens", 0) or 0
     return (
-        inp * _SONNET_46_RATE["input"]
-        + out * _SONNET_46_RATE["output"]
-        + cache_w * _SONNET_46_RATE["cache_creation"]
-        + cache_r * _SONNET_46_RATE["cache_read"]
+        inp * _SONNET_55_RATE["input"]
+        + out * _SONNET_55_RATE["output"]
+        + cache_w * _SONNET_55_RATE["cache_creation"]
+        + cache_r * _SONNET_55_RATE["cache_read"]
     ) / 1_000_000
 
 
@@ -119,6 +122,7 @@ def _call_vision_sync(image_bytes: bytes, media_type: str) -> tuple[dict[str, An
     resp = client.messages.create(
         model=_VISION_MODEL,
         max_tokens=_MAX_TOKENS,
+        thinking={"type": "between_tools"},  # 위 docstring 참조 — 512 예산 보호
         system=_VISION_SYSTEM_PROMPT,
         messages=messages,
     )
@@ -176,7 +180,7 @@ async def vision_review(
     *,
     text_rule: str = "zero",
 ) -> tuple[dict[str, Any], float]:
-    """이미지 → Sonnet 4.6 vision OCR → (verdict, cost_usd) 반환.
+    """이미지 → Sonnet 5.5 vision OCR → (verdict, cost_usd) 반환.
 
     verdict 스키마:
         passed          : bool   — text_rule 통과 여부

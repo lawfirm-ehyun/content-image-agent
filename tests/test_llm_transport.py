@@ -65,11 +65,11 @@ def test_api_parses_json_and_cost(monkeypatch):
     )
     assert parsed == {"image_slots": []}
     # 1000×$3/M + 100×$15/M = $0.0045
-    assert cost == pytest.approx(0.0045)
+    assert cost == pytest.approx(0.003)
 
 
 def test_api_budget_exceeded_raises(monkeypatch):
-    # output 1M tokens → $15 > budget $0.30
+    # output 1M tokens → $10 > budget $0.30
     _patch_call(monkeypatch, '{"ok": true}', _usage(out=1_000_000))
     with pytest.raises(RuntimeError, match="budget"):
         asyncio.run(_query_json_api("u", "s", max_budget_usd=0.30, timeout_s=10))
@@ -94,7 +94,7 @@ def test_api_missing_key_fails_fast(monkeypatch):
 
 
 def test_cache_read_cost_rate(monkeypatch):
-    # cache_read 47K tokens → 47000×$0.30/M = $0.0141 (스킬 캐시 hit 시나리오)
+    # cache_read 47K tokens → 47000×$0.20/M = $0.0094 (스킬 캐시 hit 시나리오)
     _patch_call(monkeypatch, '{"ok": true}', _usage(inp=0, out=0, cache_r=47_000))
     _, cost = asyncio.run(_query_json_api("u", "s", max_budget_usd=1.0, timeout_s=10))
-    assert cost == pytest.approx(0.0141)
+    assert cost == pytest.approx(0.0094)

@@ -49,7 +49,7 @@
 
 ## 기술 스택 한 줄
 
-Python 3.12 / uv / Playwright(Chromium-headless-shell) / Chart.js CDN / Pretendard 1.3.9 / notion-client 3.0 (multi-source DB 자동 처리) / Claude Sonnet 4.6 (LLM은 **anthropic SDK 직접 호출 default** — v1.8.3 transport 전환, ENV `LLM_TRANSPORT=sdk` 롤백 시 claude-agent-sdk 0.1.77 query() subprocess 경로) / **OpenAI `gpt-image-2-2026-04-21`** (v1.6.4 default — ENV `OPENAI_IMAGE_MODEL_INSTANT/THINKING`로 override 가능. Phase 4 검토: `chatgpt-image-latest` (org verification 후), `gpt-image-1.5` (라인 일러스트 톤 최고)).
+Python 3.12 / uv / Playwright(Chromium-headless-shell) / Chart.js CDN / Pretendard 1.3.9 / notion-client 3.0 (multi-source DB 자동 처리) / Claude Sonnet 5.5 (v1.8.6 상향 — 4.6 대비 입력 $2/출력 $10/cache_read $0.20 per MTok. thinking default ON 이라 analyze/review 는 `effort=medium` 명시, vision 은 `thinking=between_tools` off. LLM은 **anthropic SDK 직접 호출 default** — v1.8.3 transport 전환, ENV `LLM_TRANSPORT=sdk` 롤백 시 claude-agent-sdk 0.1.77 query() subprocess 경로) / **OpenAI `gpt-image-2-2026-04-21`** (v1.6.4 default — ENV `OPENAI_IMAGE_MODEL_INSTANT/THINKING`로 override 가능. Phase 4 검토: `chatgpt-image-latest` (org verification 후), `gpt-image-1.5` (라인 일러스트 톤 최고)).
 
 ## 컬러 시스템
 
