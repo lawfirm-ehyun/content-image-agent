@@ -28,10 +28,7 @@ OPENAI_RETRY_MAX_ATTEMPTS: Final[int] = 5         # 신설 v1.6.1 — gpt-image 
 OPENAI_RETRY_MAX_WAIT_S: Final[float] = 60.0      # 신설 — thinking 모델 응답 지연 대비
 
 # === llm prompt ===
-# sdk transport (claude-agent-sdk = claude.exe subprocess) 전용 한계 — 전달 통로 제약.
-MAX_USER_PROMPT_CHARS: Final[int] = 20_000        # Windows argv 한계
-MAX_BLOCKS_PROMPT_CHARS: Final[int] = 18_000      # analyze 압축 진입 임계값 (§19.8)
-# api transport (anthropic SDK 직접 호출, v1.8.3) — 전달 한계 없음. 아래는 비용 폭주
+# anthropic SDK 직접 호출 (v1.8.7 transport 단일) — 전달 한계 없음. 아래는 비용 폭주
 # 방지용 safety ceiling (입력 ~75K tokens ≈ $0.23) — 초과하는 초장문만 §19.8 압축.
 MAX_BLOCKS_PROMPT_CHARS_API: Final[int] = 150_000
 QUERY_JSON_API_MAX_TOKENS: Final[int] = 32_000    # api transport 응답 상한 (Sonnet 5.5 출력 128K 내)

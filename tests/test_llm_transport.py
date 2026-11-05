@@ -1,8 +1,12 @@
-"""LLM transport 스위치 (v1.8.3, ENV LLM_TRANSPORT) 단위 테스트.
+"""LLM 호출 경로 (anthropic SDK 직접 호출) 단위 테스트.
 
-api transport 본체(_query_json_api)는 anthropic 호출을 monkeypatch 로 대체 —
-budget 사후 검증 / max_tokens 잘림 / 빈 응답 semantics 만 검증. 실호출·캐싱
-영수증은 scripts/_spike_api_transport.py (§12.9) 영역.
+v1.8.7 에서 claude-agent-sdk(sdk transport)를 제거해 경로가 하나로 줄었다.
+남은 ENV 검사는 `assert_api_transport` — 과거 롤백 수단이던 `LLM_TRANSPORT=sdk`
+가 환경에 남아 있을 때 침묵하지 않고 터지는지만 본다.
+
+api 본체(_query_json_api)는 anthropic 호출을 monkeypatch 로 대체 — budget 사후
+검증 / max_tokens 잘림 / 빈 응답 semantics 만 검증. 실호출·캐싱 영수증은
+scripts/_spike_api_transport.py (§12.9) 영역.
 """
 from __future__ import annotations
 
@@ -13,33 +17,38 @@ from typing import Any
 import pytest
 
 from tools.llm import _common
-from tools.llm._common import _query_json_api, llm_transport
+from tools.llm._common import _query_json_api, assert_api_transport
 
 
-# === llm_transport (ENV 파싱) =================================================
+# === assert_api_transport (stale ENV 가드, v1.8.7) ===========================
 
-def test_default_is_api(monkeypatch):
-    # v1.8.3 — §12.9 spike 통과로 default=api 전환 (롤백은 LLM_TRANSPORT=sdk)
+def test_no_env_passes(monkeypatch):
     monkeypatch.delenv("LLM_TRANSPORT", raising=False)
-    assert llm_transport() == "api"
+    assert_api_transport()  # 아무것도 안 함
 
 
-def test_sdk_rollback_selected(monkeypatch):
-    monkeypatch.setenv("LLM_TRANSPORT", "sdk")
-    assert llm_transport() == "sdk"
-    monkeypatch.setenv("LLM_TRANSPORT", " SDK ")  # 공백/대문자 관용
-    assert llm_transport() == "sdk"
+def test_api_value_passes(monkeypatch):
+    # 명시적으로 api 라고 적어둔 환경은 그대로 통과 (의미가 일치하므로).
+    monkeypatch.setenv("LLM_TRANSPORT", " API ")
+    assert_api_transport()
 
 
-def test_empty_falls_back_to_default(monkeypatch):
+def test_empty_passes(monkeypatch):
     monkeypatch.setenv("LLM_TRANSPORT", "")
-    assert llm_transport() == "api"
+    assert_api_transport()
 
 
-def test_invalid_raises(monkeypatch):
+def test_stale_sdk_rollback_raises(monkeypatch):
+    """제거된 sdk 롤백을 시도하면 침묵하지 않고 터져야 한다 (운영자 오인 차단)."""
+    monkeypatch.setenv("LLM_TRANSPORT", "sdk")
+    with pytest.raises(RuntimeError, match="v1.8.7"):
+        assert_api_transport()
+
+
+def test_unknown_value_raises(monkeypatch):
     monkeypatch.setenv("LLM_TRANSPORT", "cli")
-    with pytest.raises(RuntimeError, match="미지원"):
-        llm_transport()
+    with pytest.raises(RuntimeError, match="v1.8.7"):
+        assert_api_transport()
 
 
 # === _query_json_api semantics (anthropic 호출 mock) ==========================

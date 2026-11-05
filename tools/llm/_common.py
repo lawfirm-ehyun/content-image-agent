@@ -1,18 +1,15 @@
-"""LLM 호출 공통 유틸 — transport 이중화 (v1.8.3).
+"""LLM 호출 공통 유틸 — anthropic SDK 직접 호출 단일 경로 (v1.8.7).
 
-transport 선택 (ENV `LLM_TRANSPORT`):
-  - "sdk": claude-agent-sdk query() — claude.exe subprocess wrapper.
-    §12 Week 1-2 spike (b7fe789) 로 채택된 기존 경로. **전달 통로 한계**
-    (Windows argv/stdin ~20KB) 때문에 긴 본문은 §19.8 압축으로 잘림.
-  - "api": anthropic SDK messages.create() 직접 호출 — vision_review.py 와
-    같은 path. 전달 한계 없음 = 긴 글 무손실. prompt caching 은 system block
-    cache_control 로 명시 (sdk 는 자동이었음 — 놓치면 스킬 47K+ 토큰 매 호출
-    재과금이므로 §12.9 spike 로 영수증 검증 후 전환).
+anthropic SDK `messages.stream()` 직접 호출 — vision_review.py 와 같은 path.
+전달 한계 없음 = 긴 글 무손실. prompt caching 은 system block cache_control 로
+명시 (§12.9 spike 영수증: 2회차 cache_read $0.045 → $0.004).
 
-sdk path 설계 결정 (§12 Week 1-2, plan v1.7.3+):
-  - max_turns=1 + setting_sources=[] 가드 하 functional equivalence 확인
-    (N=4 cost 0.34-0.64x cheaper, byte-identical simple_table output).
-  - agent loop / hooks / subagents 풀 도입 X (plan §12.6). 단발 query() 1회만.
+v1.8.7 이전엔 claude-agent-sdk(claude.exe subprocess) 경로를 `LLM_TRANSPORT=sdk`
+롤백용으로 병행했으나 제거했다. 사유: (a) v1.8.3 이후 한 번도 실행된 적 없는
+미검증 경로라 비상시 처음 밟게 되고, (b) 애초에 긴 글이 잘리는 결함(전달 통로
+~20KB)이 그 경로를 버린 이유라 비상구로 기능하지 못하며, (c) 같은 벤더 같은 API
+를 두드리므로 장애 이중화도 아니고, (d) claude-agent-sdk → mcp → PyJWT →
+cryptography 체인이 Dependabot 경보 23건을 끌고 왔다. 복구는 git 이력에서.
 
 Skills 자동 로드는 사용 안 함. skills/*.md 본문을 system_prompt에 직접 inject (옵션 A).
 """
@@ -24,18 +21,9 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any, Final, Literal
-
-from claude_agent_sdk import (
-    AssistantMessage,
-    ClaudeAgentOptions,
-    ResultMessage,
-    TextBlock,
-    query,
-)
+from typing import Any, Final
 
 from tools.limits import (
-    MAX_USER_PROMPT_CHARS,
     QUERY_JSON_API_MAX_TOKENS,
     QUERY_JSON_DEFAULT_BUDGET_USD,
     QUERY_JSON_TIMEOUT_S,
@@ -98,7 +86,6 @@ def load_skill(rel_path: str) -> str:
 # === transport 선택 (v1.8.3) =================================================
 
 LLM_TRANSPORT_ENV: Final[str] = "LLM_TRANSPORT"
-_VALID_TRANSPORTS: Final[frozenset[str]] = frozenset({"sdk", "api"})
 
 # Sonnet 5.5 pricing (USD/M tokens) — vision_review.py `_SONNET_55_RATE` 와 동일 값.
 # (vision 은 §12 결정과 직교한 별 path 라 상수 공유 대신 각자 정의 — 값 변경 시 둘 다 동기.)
@@ -112,19 +99,19 @@ _SONNET_55_RATE: Final[dict[str, float]] = {
 _JSON_ONLY_SUFFIX: Final[str] = "\n\n응답은 오직 JSON 한 객체만. 설명/주석 X."
 
 
-def llm_transport() -> Literal["sdk", "api"]:
-    """ENV `LLM_TRANSPORT` 로 전송 경로 결정. default "api" (v1.8.3, 2026-07-06).
+def assert_api_transport() -> None:
+    """ENV `LLM_TRANSPORT` 가 환경에 남아 있으면 즉시 실패시킨다 (v1.8.7).
 
-    §12.9 spike 통과로 default 전환: smoke 캐싱 영수증 OK (2회차 cache_read 11,832
-    tokens, $0.045→$0.004) + 252블록 페이지 compare 슬롯 동등 · 비용 0.23x.
-    운영 롤백: ENV `LLM_TRANSPORT=sdk` (코드 변경 불필요).
+    sdk transport 제거 후, 과거 롤백 수단이던 `LLM_TRANSPORT=sdk` 가 남아 있으면
+    "롤백했는데 아무 일도 안 일어나는" 침묵 실패가 된다. 조용히 무시하지 않고
+    명시적으로 터뜨려 운영자가 알아차리게 한다.
     """
-    val = os.environ.get(LLM_TRANSPORT_ENV, "api").strip().lower() or "api"
-    if val not in _VALID_TRANSPORTS:
+    val = os.environ.get(LLM_TRANSPORT_ENV, "").strip().lower()
+    if val and val != "api":
         raise RuntimeError(
-            f"{LLM_TRANSPORT_ENV}={val!r} 미지원 (허용: {sorted(_VALID_TRANSPORTS)})"
+            f"{LLM_TRANSPORT_ENV}={val!r} 는 v1.8.7 에서 제거됐다 "
+            "(claude-agent-sdk 의존성 삭제 — api 가 유일한 transport). 이 ENV 를 지울 것."
         )
-    return val  # type: ignore[return-value]
 
 
 def _cost_from_usage(usage: Any) -> float:
@@ -233,67 +220,16 @@ async def query_json(
 ) -> tuple[Any, float]:
     """prompt 를 LLM 에 보내고 JSON 응답 + 비용을 (parsed, cost_usd) 튜플로 반환.
 
-    transport (ENV `LLM_TRANSPORT`, v1.8.3):
-      - "sdk" (default): claude_agent_sdk.query() 1회 (max_turns=1, setting_sources=[]).
-        user_prompt 20K 한계 (전달 통로 제약) — 호출 측 압축 필요.
-      - "api": anthropic SDK 직접 호출 + prompt caching. 전달 한계 없음.
+    anthropic SDK 직접 호출 + prompt caching (v1.8.7 transport 단일). 전달 한계 없음.
 
     응답 텍스트가 markdown fence(```json ...```)에 싸여있어도 추출 (_extract_json).
     """
+    assert_api_transport()
     full_system = system_prompt + _JSON_ONLY_SUFFIX
-
-    if llm_transport() == "api":
-        return await _query_json_api(
-            user_prompt, full_system,
-            max_budget_usd=max_budget_usd, timeout_s=timeout_s,
-        )
-
-    # === sdk transport (기존 경로) — 전달 통로 20K 한계 ===
-    if len(user_prompt) > MAX_USER_PROMPT_CHARS:
-        raise RuntimeError(
-            f"user_prompt {len(user_prompt):,} chars > {MAX_USER_PROMPT_CHARS} 한계. "
-            "호출 측에서 압축 또는 청크 분할 필요."
-        )
-
-    options = ClaudeAgentOptions(
-        model=DEFAULT_MODEL,
-        system_prompt=full_system,
-        max_budget_usd=max_budget_usd,
-        max_turns=1,           # 단발 호출, agent loop X (plan §12.6)
-        setting_sources=[],    # CLAUDE.md / settings.json 자동 inject 차단 (옵션 A)
+    return await _query_json_api(
+        user_prompt, full_system,
+        max_budget_usd=max_budget_usd, timeout_s=timeout_s,
     )
-
-    result_text = ""
-    cost = 0.0
-    subtype: str | None = None
-    is_error = False
-
-    try:
-        async with asyncio.timeout(timeout_s):
-            async for msg in query(prompt=user_prompt, options=options):
-                if isinstance(msg, ResultMessage):
-                    cost = float(getattr(msg, "total_cost_usd", 0.0) or 0.0)
-                    subtype = msg.subtype
-                    is_error = bool(msg.is_error)
-                    if msg.result:
-                        result_text = msg.result
-                elif isinstance(msg, AssistantMessage) and not result_text:
-                    # ResultMessage.result가 비는 경우 fallback — TextBlock 합산
-                    for blk in msg.content:
-                        if isinstance(blk, TextBlock):
-                            result_text += blk.text
-    except asyncio.TimeoutError as e:
-        raise RuntimeError(f"SDK query() timeout {timeout_s}s") from e
-
-    if is_error:
-        raise RuntimeError(
-            f"SDK query() error: subtype={subtype}, "
-            f"result={result_text.strip()[:800]!r}"
-        )
-    if not result_text:
-        raise RuntimeError(f"SDK query() 빈 응답: subtype={subtype}")
-
-    return _extract_json(result_text.strip()), cost
 
 
 def _extract_json(text: str) -> Any:

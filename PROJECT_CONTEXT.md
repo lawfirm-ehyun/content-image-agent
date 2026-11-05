@@ -14,32 +14,38 @@
 
 - Python 3.12
 - 패키지 관리: `uv` 0.11+
-- 의존성: `claude-agent-sdk` 0.1.77, `notion-client` 3.0, `playwright` 1.59, `pillow` 12, `pydantic` 2.13, `pyyaml` 6, `httpx` 0.28, `openai` 2.34
+- 의존성: `anthropic` 0.102, `notion-client` 3.0, `playwright` 1.59, `pillow` 13, `pydantic` 2.13, `pyyaml` 6, `httpx` 0.28, `openai` 2.34
 - 렌더링: Playwright (Chromium headless) + Chart.js + Pretendard
 - 폰트: Pretendard 1.3.9 (Regular/Medium/SemiBold/Bold) — `scripts/download_fonts.sh`로 자동 다운로드
 
-## 3. LLM 호출 — claude-agent-sdk `query()` 직접 호출 (§12 Week 1-2, 2026-05-13)
+## 3. LLM 호출 — anthropic SDK `messages.stream()` 직접 호출 (v1.8.7, 2026-11-05)
 
 ### 3.1 현재 패턴
 
-`tools/llm/_common.py:query_json`이 `claude-agent-sdk.query()`를 단발 호출. plan §12 Week 0 spike(2026-05-12, `scripts/_spike_sdk.py`)에서 SDK 0.1.77 + Sonnet 4.6 + `max_turns=1` + `setting_sources=[]` 가드 하 functional equivalence 확인 (이전 "토큰 비용 3배+" 우회 동기는 위 가드로 해소).
+`tools/llm/_common.py:query_json` 이 anthropic SDK 를 단발 호출한다. system prompt
+(skills markdown inline) 전체를 cache block 1개로 표시해 같은 call site 끼리 캐시를
+공유 — 페이지/슬롯 연쇄 처리에서 2회차부터 `cache_read` 로 ~10x 절감.
 
-agent loop / hooks / subagents 풀 도입은 X — plan §12.6 "처음부터 다 빼지 말기". 단발 query() 1회만.
+v1.8.3 에서 claude-agent-sdk(claude.exe subprocess) 경로를 default 에서 내렸고,
+**v1.8.7 에서 의존성 자체를 제거**했다. 사유는 CLAUDE.md "운영 사실" 참조 —
+요약하면 한 번도 안 쓰인 미검증 경로 + 긴 글 잘림이 폐기 사유라 비상구로
+기능 못 함 + 같은 벤더라 이중화 아님 + 보안 경보 23건. 복구는 git 이력에서.
 
 ```python
 # tools/llm/_common.py 요지
-options = ClaudeAgentOptions(
+with client.messages.stream(
     model=DEFAULT_MODEL,
-    system_prompt=system_prompt_with_skills_inlined,
-    max_budget_usd=cap,
-    max_turns=1,           # 단발 호출, agent loop X
-    setting_sources=[],    # CLAUDE.md / settings.json 자동 inject 차단 (옵션 A)
-)
-async for msg in query(prompt=user_prompt, options=options):
-    if isinstance(msg, ResultMessage):
-        cost = float(msg.total_cost_usd or 0.0)
-        result_text = msg.result or result_text
+    max_tokens=QUERY_JSON_API_MAX_TOKENS,
+    output_config={"effort": "medium"},   # v1.8.6 — Sonnet 5.5 thinking default ON 대응
+    system=[{"type": "text", "text": full_system,
+             "cache_control": {"type": "ephemeral"}}],
+    messages=[{"role": "user", "content": user_prompt}],
+) as stream:
+    resp = stream.get_final_message()
 ```
+
+budget 은 **사후 검증** — api 는 중단이 불가하므로 단일 호출 초과분은 지출된 뒤
+RuntimeError 로 슬롯/페이지 폐기 (sdk 의 `error_max_budget_usd` 와 같은 semantics).
 
 ### 3.2 모델 ID (확정)
 
